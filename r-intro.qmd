@@ -101,13 +101,13 @@ Why does this value differ from that you calculated in the previous question?**
 In what way do they differ from the two-table verbs listed above?
 How could we replace `filter(ticker %in% latest_mkt_cap$ticker)` (see above) with one of these two verbs?**
 
-5. **In calculating ROE above, we used `ib` rather than a measure of "net income".
+6. **In calculating ROE above, we used `ib` rather than a measure of "net income".
 According to [WRDS](https://wrds-www.wharton.upenn.edu/pages/support/support-articles/compustat/global/ni-net-income-variable/), "`ni` [net income] only applies to Compustat North America. Instead use: `ni = ib + xi + do`."
 Looking at the data in `aus_bank_funds`, does this advice seem correct?
 How would you check this claim?
 (*Hint:* You should probably focus on cases where both `xi` and `do` are non-missing and checking more recent years may be easier.)**
 
-6. **Above we created a plot of market-to-book ratios.
+7. **Above we created a plot of market-to-book ratios.
 Another measure linking stock prices to fundamentals is the *price-to-earnings ratio* (also known as the *PE ratio*).
 Typically, PE ratios are calculated as**
 
@@ -126,28 +126,28 @@ $$ \textrm{PE} = \frac{\textrm{Market capitalization}}{\textrm{Net income}} $$
 Is this likely to hold in practice?**
 </ul>
 
-7. **Calculating the PE ratio using `pe = mkt_cap/ib`, create a plot of PE ratio for Australian banks over time like that created for market-to-book ratios above.**
+8. **Calculating the PE ratio using `pe = mkt_cap/ib`, create a plot of PE ratio for Australian banks over time like that created for market-to-book ratios above.**
 
-8. **Suppose you wanted to produce the plots in the test (market capitalization; market-to-book ratios; histogram of ROE) using Excel starting from spreadsheet versions of the three data sets provided above?
+9. **Suppose you wanted to produce the plots in the test (market capitalization; market-to-book ratios; histogram of ROE) using Excel starting from spreadsheet versions of the three data sets provided above?
 Which aspects of the task would be easier?
 Which would be more difficult?
 What benefits do you see in using R code as we did above?**
 
-9. **Using the documentation from the `farr` package, describe the contents of the `by_tag_year` data frame (type `help(by_tag_year)` or `? by_tag_year` after loading the `farr` package).**
+10. **Using the documentation from the `farr` package, describe the contents of the `by_tag_year` data frame (type `help(by_tag_year)` or `? by_tag_year` after loading the `farr` package).**
 
-10. **Using `by_tag_year`, create a plot that displays the total number of questions asked across all languages over time.**
+11. **Using `by_tag_year`, create a plot that displays the total number of questions asked across all languages over time.**
 
 
-11. **Produce a plot like the one above, but focused on questions related to R.**
+12. **Produce a plot like the one above, but focused on questions related to R.**
 
-12. **If we want to know the popularity of R relative to other languages, we're probably more interested in a percentage, instead of just the counts. 
+13. **If we want to know the popularity of R relative to other languages, we're probably more interested in a percentage, instead of just the counts. 
 Add a new variable that is the fraction of all questions asked in each year with a specific tag out to the dataset and plot this variable focused on questions related to R.**
 
-13. **Two popular R packages we have used in this chapter---`dplyr` and `ggplot2`---also have Stack Overflow tags.
+14. **Two popular R packages we have used in this chapter---`dplyr` and `ggplot2`---also have Stack Overflow tags.
 Perform the same steps that you did for R above for these two tags to see whether they are growing as well.**
 
-14. **Produce a plot that depicts the relative popularity of R, Python, SAS, Stata, and Matlab over time.**
+15. **Produce a plot that depicts the relative popularity of R, Python, SAS, Stata, and Matlab over time.**
 
-15. **Which language among R, SAS, Stata, and MATLAB, has triggered the most questions in the history of Stack Overflow? 
+16. **Which language among R, SAS, Stata, and MATLAB, has triggered the most questions in the history of Stack Overflow? 
 (*Hint*: Use the `dplyr` verbs `summarize()` and `group_by()`.)**
 
