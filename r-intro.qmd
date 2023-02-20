@@ -119,6 +119,9 @@ $$ \textrm{Earnings per share} = \frac{\textrm{Net income}}{\textrm{Shares outst
 **So we might write**
 
 $$ \textrm{PE} = \frac{\textrm{Stock price} \times \textrm{Shares outstanding}}{\textrm{Net income}} $$
+**But the numerator here is simply market capitalization, suggesting we could use the following:**
+
+$$ \textrm{PE} = \frac{\textrm{Market capitalization}}{\textrm{Net income}} $$
 **What critical assumption have we made in deriving the last equation?
 Is this likely to hold in practice?**
 </ul>
@@ -130,7 +133,7 @@ Which aspects of the task would be easier?
 Which would be more difficult?
 What benefits do you see in using R code as we did above?**
 
-9. **Using the documentation from the `farr` package, describe the contents of the `by_tag_year` package (type `help(by_tag_year)` or `? by_tag_year` after loading the `farr` package).**
+9. **Using the documentation from the `farr` package, describe the contents of the `by_tag_year` data frame (type `help(by_tag_year)` or `? by_tag_year` after loading the `farr` package).**
 
 10. **Using `by_tag_year`, create a plot that displays the total number of questions asked across all languages over time.**
 
