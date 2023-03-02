@@ -5,3 +5,4 @@ This page provides Quarto templates for use with the course book [Accounting Res
  - [Describing data](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd)
  - [Regression fundamentals](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd)
  - [Causal inference](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd)
+ - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
