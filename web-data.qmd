@@ -1,0 +1,177 @@
+---
+title: "Importing data: Exercise template"
+author: You name
+format: html
+---
+
+You will find the `readxl` package useful here.
+This package was not included in the list of packages to be installed [here](https://iangow.github.io/far_book/intro.html#install), so you may need to run the following code if this package is not installed on your computer.
+
+```{r}
+#| eval: false
+install.packages("readxl")
+```
+
+# Importing data {#web-data}
+
+```{r}
+#| message: false
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(tidyr)     
+library(readr)     # For read_lines(), read_fwf(), etc.
+library(stringr)   # For str_c(), str_detect()
+library(pdftools)  # For pdf_text()
+library(lubridate) # For ymd()
+```
+
+## Reading (seemingly) non-tabular data
+
+### Exercises
+
+1. Follow the steps below to produce a data set where each column has the appropriate data type.
+
+    a. Go to the [MSCI GICS website](https://www.msci.com/gics).
+    b. Get the link to the file under *historical GICS structures* that is "Effective until Sep 28, 2018".
+    c. Use this link and the `tempfile()` and `download.file()` functions to download the linked file.
+    d. Use the `read_excel` function from the `readxl` library to read the downloaded file.
+    e. Identify any variables that need to be handled like `temp` in the Fama-French data set above and process accordingly.
+    f. Use the `fill` function from the `tidyr` package to fill in rows as necessary.
+    g. Make sure that each column has the appropriate data type.
+
+*Hints:*
+
+  a. You may find it helpful to look at the Excel file so you can see how the data are structured.
+  b. The function `read_excel` has `skip` and `col_names` arguments that you will probably want to use.
+  c. Your *final* column names should be `sector`, `sector_desc`, `ind_group`, `ind_group_desc`, `industry`, `industry_desc`, `sub_ind`, `sub_ind_desc`, and `sub_ind_details`.
+  d. The following code snippets *might* be useful:
+  
+  - `filter(!is.na(sub_ind_details))`
+  - `fill(sector:sub_ind_desc, .direction = "down")`.
+  - `mutate(across(where(is.numeric), as.integer))`
+
+## Extracting data from messy formats
+
+```{r}
+#| message: false
+#| cache: true
+#| include: false
+url <- "https://site.warrington.ufl.edu/ritter/files/money-left-on-the-table.pdf"
+output <- pdf_text(url)[-1]
+
+col_names <-  c("amount_left_on_table", "company", "ipo_date", 
+           "offer_price", "first_close_price", "shares_offered", "ticker")
+skip_rows <- 2
+temp <- 
+  pdf_text(url)[-1] %>% 
+  read_lines()
+
+max_rows <- which(str_detect(temp, "^Source:")) - 1 - skip_rows
+
+ritter_data_raw <- 
+  pdf_text(url)[-1] %>% 
+    read_lines(skip = 2, n_max = max_rows) %>%
+    tibble(temp = .) %>%
+    filter(!str_detect(temp, "^$"), 
+           !str_detect(temp, "^\\s+\\d+$"))
+
+regex <- str_c(
+  "^\\s*",            # Start (perhaps followed by spaces)
+  "([^\\s]+)\\s+",    # Non-space chars (followed by spaces)
+  "(.+)\\s+",         # Any characters (maybe spaces)
+                      #  (followed by spaces)
+  "([0-9]{6})\\s+",   # Six digits (followed by spaces)
+  "([^\\s]+)\\s+",    # Non-space chars (followed by spaces)
+  "([^\\s]+)\\s+",    # Non-space chars (followed by spaces)
+  "([^\\s]+)\\s+",    # Non-space chars (followed by spaces)
+  "([^\\s]+)",        # Non-space chars 
+  "$")                # End of string
+
+ritter_data <-
+  ritter_data_raw %>%
+  # Here we use the regular expression to split the data into columns
+  extract(temp, col_names, regex) %>%
+  # Finally, fix up the data types of the columns
+  mutate(across(all_of(c("amount_left_on_table", "first_close_price",
+                         "offer_price", "shares_offered")), 
+                parse_number),
+         company = str_trim(company),
+         ipo_date = ymd(ipo_date)) 
+```
+
+### Exercises
+
+1. In the PDF, Ritter states "IPOs marked with an \* also had international tranches (and probably some others, too)." 
+Write code to remove this "\*" when present and create an additional column `intl_tranche` that indicates an international tranche.
+(*Hint*: The `extract` function can be used here. In a first pass, you might use `into = c("company", "intl_tranche")` and  `regex = "^(.*?)(\\*?)$"` with this function.
+Can you see what the `?` in `.*?` is doing? 
+There is some explanation [here](https://stackoverflow.com/questions/3075130/what-is-the-difference-between-and-regular-expressions). 
+Does the regex work without this `?`?
+What does `\\*?` match?)
+
+2. Ritter defines *money left on the table* as "the difference between the closing price on the first day of trading and the offer price, multiplied by the number of shares sold." 
+Can you calculate this from the data provided? 
+Is the calculated amount (`amount`) equal to the amount in `amount_left_on_table` in each case?
+What explains the differences? 
+(*Hints*: There will be more than one reason. You may find it helpful to calculate `ratio = amount/amount_left_on_table` and to focus on differences of more than 1% with `filter(abs(ratio - 1) > 0.01)`.)
+
+3. In words, what do each of the following regular expressions *match*?
+What do they [*capture*](https://javascript.info/regexp-groups)?
+
+    - `"^\\s*"`
+    - `"(.+)\\s+"`
+    - `"([^\\s]+)\\s+"`
+    - `"([0-9]{1,2}/[0-9]{4})\\s+"`
+    - `"([0-9,]+)\\s+"`
+
+4. The [online appendix](https://www.dropbox.com/s/58ba7d3wg9q2ijw/Huang_app.pdf?dl=1) for "The Customer Knows Best: The Investment Value of Consumer Opinions" contains a table Table OA.1 entitled *List of firms with customer reviews on Amazon.com*.
+Using an approach similar to that we used for `ritter_data` above, create a data frame `huang_data` with columns `company_name`, `industry`, `start`, `end`, `months`, `reviews`.
+
+    - `months` and `reviews` should be numerical values.
+    - `start` and `end` should be dates (use the first day of the month if only the month and year is specified).
+    - You can solve this by combining the partial regular expressions above into a single regular expression (in the way we combined partial regular expressions above for `ritter_data` using `str_c()`).
+
+5. Using the following code, where the URL provides a sample of observations on mergers and acquisitions from SDC, create a first-pass import of the data.^[We messed with these data, so these cannot be used for research!
+    But they are a realistic representation of an actual dataset.]
+    What is the first issue you see when you look at the data in `ma_sdc`? 
+    (*Hint*: Look at the first five rows.) 
+    Adapt the code to address this issue.
+    (*Hint*: You may have to experiment with different values for the `skip` argument to get the right setting.)
+
+```{r}
+col_names <- c("date_announced", "date_effective", "tgt_name",
+               "tgt_nation", "acq_name", "acq_nation",
+               "status", "pct_of_shares_acq", "pct_owned_after_transaction",
+               "acq_cusip", "tgt_cusip", "value_of_transaction_mil",
+               "acq_prior_mktval", "tgt_prior_mktval",
+               "acq_nation_code", "tgt_nation_code")
+
+url <- paste0("https://gist.githubusercontent.com/iangow/",
+              "eb7dfe1cd0913821429bdf0566465d41/raw/",
+              "358d60a4429f5747abc61f8acc026d335fc165f3/sap_sample.txt")
+ma_sdc_file <- tempfile()
+download.file(url, ma_sdc_file)
+```
+
+```{r}
+#| message: false
+ma_sdc_cols <- fwf_empty(ma_sdc_file, col_names = col_names)
+ma_sdc <- read_fwf(ma_sdc_file, col_positions = ma_sdc_cols)
+```
+
+6. Open the file found at `url` in your browser (`browseURL(url)` will help here) and locate the row containing the word `Coffey`. 
+    What do you see there as relates to the variable `status`?
+    How does this compare with what you see in `status` if you filter using `tgt_name == "Coffey International Ltd")`?
+    What do you think has happened here?
+    How can setting a value for `n` in `fwf_empty` help here?
+    (*Hint*: Using `which(ma_sdc$status == "Unconditi")` might help here.)
+    
+
+7. Using an appropriate function from the `lubridate` package, fix the variables `date_announced` and `date_effective` so that they have type `Date`.
+
+8. What are the minimum and maximum values of `date_announced` and `date_effective`? 
+What explains missing values (if any) here?
+    
+9. What do you observe about `acq_cusip` and `tgt_cusip`?
+Can you write some code to check that these variables have been read in correctly?
+(*Hint*: The function `nchar()` might be useful here.)
