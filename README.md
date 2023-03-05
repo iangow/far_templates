@@ -19,3 +19,4 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Regression fundamentals](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd)
  - [Causal inference](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd)
  - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+ - [Financial statements: A first look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd)

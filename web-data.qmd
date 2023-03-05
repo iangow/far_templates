@@ -166,7 +166,6 @@ ma_sdc <- read_fwf(ma_sdc_file, col_positions = ma_sdc_cols)
     How can setting a value for `n` in `fwf_empty` help here?
     (*Hint*: Using `which(ma_sdc$status == "Unconditi")` might help here.)
     
-
 7. Using an appropriate function from the `lubridate` package, fix the variables `date_announced` and `date_effective` so that they have type `Date`.
 
 8. What are the minimum and maximum values of `date_announced` and `date_effective`? 
