@@ -18,5 +18,9 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Describing data](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd)
  - [Regression fundamentals](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd)
  - [Causal inference](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd)
- - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+ - Statistical inference: Chapter under development
  - [Financial statements: A first look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd)
+ - [Financial statements: A second look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd)
+ - Linking databases: Template to come later
+ - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+ - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)
