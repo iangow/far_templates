@@ -1,7 +1,7 @@
 ---
-title: "Solutions for 'Financial statements: A second look'"
+title: "Exercise template for 'Financial statements: A second look'"
 author: Ian Gow
-format: pdf
+format: html
 bibliography: book.bib
 ---
 

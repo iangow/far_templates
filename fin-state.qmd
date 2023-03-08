@@ -128,3 +128,7 @@ xrd_at_sum %>%
   select(-total_at, -total_rd) %>%
   arrange(desc(fyear), group)
 ```
+
+8. Write code to produce the following plot (see [book](https://iangow.github.io/far_book/fin-state.html#exercises-8) for the plot).
+Also produce plots that use `rd_intensity1` and `rd_intensity2` as measures of R&D intensity.
+Do the plots help you think about which of the three measures makes most sense?
