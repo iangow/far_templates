@@ -1,0 +1,372 @@
+---
+title: "Template for 'FFJR'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+We have included a bibliography entry in the header information here.
+The file for this can be found on [the `far_templates` page](https://github.com/iangow/far_templates/blob/main/README.md).
+
+All code from the book chapter has been included below.
+Feel free to delete any code that you don't need or use.
+
+```{r}
+#| include: false
+library(DBI)
+library(dplyr, warn.conflicts = FALSE)
+library(dbplyr)      # For window_order
+library(tidyr)       # For nest and unnest
+library(purrr)       # For map, map2
+library(ggplot2)
+```
+
+## Stock splits
+
+### Discussion questions
+
+1. Consider the following alternative theories.
+
+- **Theory A**: Firms like to keep their stock price within certain bounds.
+When the stock price rises above a certain threshold, a firm may initiate a split, announcing it several weeks in advance of its effective date.
+Firms do not use splits to signal private information about firm prospects.
+- **Theory B**: Firms use splits to signal private information about firm prospects.
+A firm will announce a split several weeks in advance of its effective date.
+- **Theory C**: Capital market participants don't fully adjust for the effect of splits, tending to anchor on the pre-split price to some degree.
+Firms do not use splits to signal private information about firm prospects.
+
+Produce a set of indicative plots (e.g., drawn by hand) for the predicted behaviour of cumulative abnormal returns for assuming that the split is announced in month $-2$.
+What impact would variation in the announcement dates relative to the split effective date have on the plots?
+
+## Dividend policy
+
+### Discussion questions
+
+1. Does the research design include the use of a control group? 
+If so, how? 
+What alternative methods could have been used to introduce a control group?
+
+2. @Fama:1969wc [p. 9] state "the most important empirical results of this study are summarized in Tables 2 and 3 and Figures 2 and 3."
+What does Table 3 tell us? (Hint: Read p.11.) 
+Do you find the presentation of Table 3 to be effective?
+
+3. Consider Table 2. 
+Is it more or less important than Table 3? 
+What is the relationship between Table 2 and Figures 2 and 3?
+
+4. What statistical tests are used to test the hypotheses of the paper?
+
+## Replication of FFJR
+
+```{r}
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+rs <- dbExecute(pg, "SET search_path TO crsp")
+msf <- tbl(pg, "msf")
+msi <- tbl(pg, "msi")
+stocknames <- tbl(pg, "stocknames")
+dsedist <- tbl(pg, "dsedist")
+```
+
+```{r}
+#| include: false
+splits <-
+  dsedist %>%
+  filter(exdt >= "1927-01-01", exdt <= "1959-12-31",
+         distcd %in% c(5523L, 5533L),
+         facshr >= 0.25) %>%
+  mutate(split = TRUE) %>%
+  select(permno, split, exdt, facshr) 
+```
+
+
+```{r}
+#| include: false
+nyse_stocks <-
+  stocknames %>%
+  filter(exchcd == 1,
+         substr(as.character(shrcd), 1L, 1L) == "1") %>%
+  select(permno, namedt, nameenddt) 
+```
+
+```{r}
+#| include: false
+nyse_splits_raw <-
+  splits %>%
+  inner_join(nyse_stocks, by = "permno") %>%
+  filter(exdt >= namedt, exdt <= nameenddt) 
+```  
+
+```{r}
+#| include: false
+month_indexes <-
+  msi %>%
+  mutate(month = as.Date(date_trunc('month', date))) %>%
+  window_order(month) %>%
+  mutate(month_index = row_number()) %>%
+  select(date, month, month_index)
+```
+  
+```{r nyse_splits}
+#| include: false
+nyse_splits <-
+  nyse_splits_raw %>%
+  mutate(month = as.Date(date_trunc('month', exdt))) %>%
+  inner_join(month_indexes, by = "month") %>%
+  rename(ex_month_index = month_index) %>%
+  select(-namedt, -nameenddt, -date) %>%
+  collect()
+```
+
+We construct `nyse_msf`, which is essentially `crsp.msf` restricted to NYSE stocks and months with non-missing returns, and with the added variable `month_index`.
+
+```{r nyse_msf}
+#| include: false
+nyse_msf <-
+  msf %>%
+  filter(!is.na(ret)) %>%
+  inner_join(nyse_stocks, by = "permno") %>%
+  filter(between(date, namedt, nameenddt)) %>%
+  inner_join(month_indexes, by = "date") %>%
+  select(permno, month_index, date, ret) %>%
+  collect()
+```
+
+The following code merges data on splits from `nyse_splits` with data on returns from `nyse_msf`.
+We create a variable (`month_rel_ex`) that measures the number of months between the split and the return.
+
+```{r}
+#| include: false
+split_return_data <-
+  nyse_splits %>%
+  left_join(nyse_msf, by = "permno") %>%
+  mutate(month_rel_ex = month_index - ex_month_index) %>%
+  select(permno, exdt, date, ret, month_rel_ex)
+```
+
+```{r}
+#| include: false
+split_sample <-
+  split_return_data %>%
+  filter(between(month_rel_ex, -12, 12)) %>%
+  group_by(permno, exdt) %>%
+  summarize(n_obs = n(), .groups = "drop") %>%
+  filter(n_obs == 25L) %>%
+  select(permno, exdt)
+
+split_returns <-
+  split_return_data %>%
+  semi_join(split_sample, by = c("permno")) 
+```
+
+```{r}
+#| include: false
+split_sample %>% distinct(permno) %>% count()
+split_sample %>% count()
+```
+
+```{r}
+#| include: false
+index_returns <-
+  msi %>%
+  select(date, vwretd, ewretd) %>%
+  collect()
+```
+
+```{r}
+#| include: false
+omit_returns <-
+  split_returns %>%
+  mutate(exclude = between(month_rel_ex, -15, 0)) %>%
+  group_by(permno, date) %>%
+  summarize(exclude = any(exclude), .groups = "drop")
+```
+
+```{r}
+#| include: false
+split_returns_reg <-
+  split_returns %>%
+  inner_join(omit_returns, by = c("permno", "date")) %>%
+  select(permno, date, ret, exclude) %>%
+  distinct() 
+```
+
+```{r}
+#| include: false
+abnormal_returns <-
+  split_returns_reg %>%
+  left_join(index_returns, by = "date") %>%
+  mutate(lpr = log(1 + ret),
+         lm = log(1 + vwretd)) %>%
+  select(permno, date, lpr, lm, exclude) %>%
+  nest(data = !permno) %>%
+  mutate(fit = map(data, ~ lm(lpr ~ lm, data = ., subset = !exclude,
+                              na.action = "na.exclude"))) %>%
+  mutate(predicted = map2(fit, data, ~ predict(.x, newdata = .y))) %>%
+  unnest(cols = c(predicted, data)) %>%
+  mutate(resid = lpr - predicted) %>%
+  select(permno, date, resid)
+```
+
+```{r}
+#| include: false
+table2_data <-
+  abnormal_returns %>%
+  inner_join(collect(month_indexes), by = "date") %>%
+  left_join(nyse_splits, by = "permno") %>%
+  mutate(month_gap = month_index - ex_month_index) %>%
+  filter(abs(month_gap) <= 30)
+```
+
+```{r}
+#| include: false
+table2_data %>%
+  group_by(month_gap) %>%
+  summarize(all_u = mean(resid), .groups = "drop") %>%
+  arrange(month_gap) %>%
+  mutate(all_U = cumsum(all_u)) %>%
+  ggplot(aes(x = month_gap, y = all_U)) +
+  geom_point()
+```
+
+### Data on dividends
+
+```{r}
+#| include: false
+div_months <-
+  dsedist %>%
+  filter(substr(as.character(distcd), 1L, 1L) == "1") %>%
+  mutate(month = as.Date(date_trunc('month', exdt))) %>%
+  group_by(permno, month) %>%
+  summarize(divamt = sum(divamt, na.rm = TRUE), .groups = "drop")
+```
+
+
+```{r nyse_divs_raw}
+#| include: false
+nyse_divs_raw <-
+  msf %>%
+  inner_join(nyse_stocks, by = "permno") %>%
+  filter(between(date, namedt, nameenddt)) %>%
+  mutate(month = as.Date(date_trunc('month', date))) %>%
+  select(permno, date, month, cfacshr) %>%
+  left_join(div_months, by = c("permno", "month")) %>%
+  mutate(divamt = coalesce(divamt/cfacshr, 0)) %>%
+  select(permno, month, divamt)
+```
+
+```{r nyse_divs}
+#| include: false
+nyse_divs <-
+  nyse_divs_raw %>%
+  group_by(permno) %>%
+  window_order(month) %>%
+  window_frame(from = -11, to = 0) %>%
+  mutate(div_trailing = sum(divamt, na.rm = TRUE),
+         mths_trailing = sum(1, na.rm = TRUE)) %>%
+  window_frame(from = 1, to = 12) %>%
+  mutate(div_forward = sum(divamt, na.rm = TRUE),
+         mths_forward = sum(1, na.rm = TRUE)) %>%
+  filter(mths_trailing == 12, mths_forward == 12) %>%
+  ungroup() %>%
+  select(permno, month, div_trailing, div_forward) %>%
+  collect()
+```
+
+```{r split_firm_dividends}
+#| include: false
+split_firm_dividends <-
+  nyse_splits %>%
+  left_join(nyse_divs, by = c("permno", "month")) %>%
+  mutate(div_ratio = if_else(div_trailing > 0, div_forward/div_trailing,
+                             NA_real_)) %>%
+  filter(!is.na(div_ratio)) %>%
+  select(permno, month, exdt, div_ratio) 
+```
+
+```{r}
+#| include: false
+div_mkt <-
+  nyse_divs %>% 
+  group_by(month) %>% 
+  summarize(div_trailing = mean(div_trailing, na.rm = TRUE),
+            div_forward = mean(div_forward, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(mkt_div_ratio = if_else(div_trailing > 0, div_forward/div_trailing,
+                                 NA_real_))
+
+dividends_file <-
+  split_firm_dividends %>%
+  inner_join(div_mkt, by = "month") %>%
+  select(permno, exdt, div_ratio, mkt_div_ratio) %>% 
+  mutate(up_div = div_ratio >= mkt_div_ratio)
+```
+
+```{r}
+#| include: false
+table2_w_divs <- 
+  table2_data %>%
+  left_join(dividends_file, by = c("permno", "exdt"))
+```
+
+```{r}
+#| include: false
+table2_w_divs %>%
+  filter(up_div) %>%
+  group_by(month_gap) %>%
+  summarize(u = mean(resid), .groups = "drop") %>%
+  arrange(month_gap) %>%
+  mutate(U = cumsum(u)) %>%
+  ggplot(aes(x = month_gap, y = U)) +
+  geom_point()
+```
+
+```{r}
+#| include: false
+table2_w_divs %>%
+  filter(!up_div) %>%
+  group_by(month_gap) %>%
+  summarize(u = mean(resid), .groups = "drop") %>%
+  arrange(month_gap) %>%
+  mutate(U = cumsum(u)) %>%
+  ggplot(aes(x = month_gap, y = U)) +
+  geom_point()
+```
+
+### Discussion questions and exercises
+
+1. "In the past a large fraction of stock splits have been followed closely by dividend increases---and increases greater than those experienced at the same time by other securities in the market."
+What evidence to support this claim (if any) is provided by FFJR?
+Do we see evidence consistent with this in the data underlying our replication above?
+
+2. Consider the following alternative theories.
+
+- **Theory $A'$**: Firms like to keep their stock price within certain bounds.
+When the stock price rises above a certain threshold, a firm may initiate a split, announcing it several weeks in advance of its effective date.
+Firms do not use splits to signal private information about firm prospects.
+*Pre-split stock prices may be driven by information that suggests an imminent increase in dividends.*
+- **Theory $B'$**: Firms use splits to signal private information about firm prospects.
+A firm will announce a split several weeks in advance of its effective date.
+*Firms may also use dividend changes to signal private information about firm prospects.*
+- **Theory $B^{''}$**: *Firms use splits to signal private information about future dividend increases, which in turn signal private information about firm prospects.*
+A firm will announce a split several weeks in advance of its effective date.
+
+Suggest tests that could distinguish which of the three hypotheses above best explains observed phenomena.
+Which theory best fits the theory proposed by FFJR?
+How would the theory need to be modified to comport better with the theory proposed by FFJR?
+
+3. On p. 17 of @Fama:1969wc, it is argued that "our data suggest that once the information effects of associated dividends are properly considered, a split *per se* has no net effect on common stock returns."
+Is it clear what meaning the words "per se" have in this sentence?
+Does FFJR provide persuasive evidence in support of this claim?
+Describe how you might test this claim using the richer data available today.
+What data would you use beyond that used in FFJR?
+
+4. How the figures produced above compare with their equivalents in FFJR?
+What might account for any differences?
+
+5. In the analysis above we used `vwretd` as the market index.
+Modify the code above to instead use `ewretd`.
+Do you observe any changes in the resulting figures?
+Which do you believe is the better market index for these plots?
+Why?

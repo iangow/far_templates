@@ -24,4 +24,6 @@ Each template below shares its name with the corresponding chapter in the [book]
  - Linking databases: Template to come later
  - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
  - [Capital markets research in accounting](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd)
+  - [FFJR](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd)
+
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)
