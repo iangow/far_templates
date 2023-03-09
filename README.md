@@ -23,4 +23,5 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Financial statements: A second look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd)
  - Linking databases: Template to come later
  - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+ - [Capital markets research in accounting](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd)
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)
