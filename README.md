@@ -15,6 +15,9 @@ Instructors can contact [Ian Gow](mailto:ian.gow@unimelb.edu.au) for these solut
 
 Each template below shares its name with the corresponding chapter in the [book](https://iangow.github.io/far_book/).
 
+
+### Part I: Foundations
+
  - [Describing data](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd)
  - [Regression fundamentals](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd)
  - [Causal inference](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd)
@@ -23,7 +26,10 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Financial statements: A second look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd)
  - Linking databases: Template to come later
  - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+
+### Part II: Capital markets research
+
  - [Capital markets research in accounting](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd)
-  - [FFJR](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd)
+ - [FFJR](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd)
 
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)
