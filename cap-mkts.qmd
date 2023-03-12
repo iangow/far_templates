@@ -4,7 +4,9 @@ author: Your name
 format: html
 ---
 
-```{r, message=FALSE}
+```{r}
+#| message: false
+#| include: false
 library(dplyr, warn.conflicts = FALSE)
 library(DBI)
 library(ggplot2)
@@ -14,12 +16,13 @@ library(lubridate) # For floor_date function
 ## The CRSP database
 
 ```{r}
-pg <- dbConnect(RPostgres::Postgres())
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
 dsf <- tbl(pg, sql("SELECT * FROM crsp.dsf")) 
+dsi <- tbl(pg, sql("SELECT * FROM crsp.dsi")) 
 msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
-dsf %>% collect(n = 5)
-msf %>% collect(n = 5)
+msi <- tbl(pg, sql("SELECT * FROM crsp.msi"))
 ```
 
 ### Exercises
@@ -50,10 +53,11 @@ What changes in terms of where the processing occurs if we replace these two lin
 Do we get different results?
 
 ```{r}
+#| echo: false
 plot_data <-
   dsf %>%
   select(date) %>%
-  filter(date >= "2018-01-01") %>%
+  filter(date >= "2018-01-01", date <= "2020-12-31") %>%
   collect() %>%
   mutate(month = floor_date(date, "month")) 
 
