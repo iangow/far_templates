@@ -1,7 +1,9 @@
 ---
 title: "Exercise template for 'Ball and Brown (1968)'"
 author: Your name
-format: html
+format: 
+  html: default
+  pdf: default
 bibliography: book.bib
 ---
 
@@ -14,7 +16,7 @@ library(readr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
-library(dbplyr)     # Needed for window_order function
+library(dbplyr)     # For window_order()
 ```
 
 # @Ball:1968ub {#bb1968}
@@ -24,7 +26,7 @@ library(dbplyr)     # Needed for window_order function
 ### Discussion questions
 
 1.	What is the research question of @Ball:1968ub? 
-Do you find the paper to be persuasive?
+Do you find the paper to provide a persuasive answer to its research question?
 
 2.	Look at the references in @Ball:2019wu [pp. 177-178].
 What do you notice?
@@ -73,11 +75,6 @@ Do you think that "not meaningless" implies "not useless"?
 Which questions (or facts) does BB68 address in these terms?
 
 ## Replicating @Ball:1968ub
-
-In this section, we follow @Nichols:2004tb in conducting an updated replication of @Ball:1968ub.
-
-
-We get earnings and returns data from Compustat and CRSP, respectively.
 
 ```{r wrds_data}
 #| include: false
@@ -345,11 +342,20 @@ How can we reconcile this with the existence of firms with market capitalization
 *Bonus*: Using data from `crsp.msf`, identify the firm whose market capitalization was `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` million in December 2020?
 
 ```{r}
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
+
+msf %>% filter(date == "2020-12-31") %>% mutate(mktcap = prc * shrout) %>%
+```
+
+```{r}
 me_breakpoints_raw %>% 
   filter(month == "2020-12-01")
 ```
 
-2. To keep things straightforward, we focused on firms who have returns for each month in the $(t - 11, t+ 6)$ window.
+2. To keep things straightforward, we focused on firms who have returns for each month in the $(t - 11, t + 6)$ window.
 Can you tell what approach @Nichols:2004tb took with regard to this issue?
 
 3. Table 2 of @Nichols:2004tb measures cumulative abnormal returns as the "cumulative raw return minus cumulative size decile portfolio to which the firm begins."
@@ -359,7 +365,9 @@ Does this tweak significantly affect the results?
 Which approach seems most appropriate?
 That of @Nichols:2004tb or that of @Ball:1968ub?
 
-```{r, include=FALSE, eval=FALSE}
+```{r}
+#| include: false
+#| eval: false
 alt_plot_data <-
   merged %>% 
   filter(!is.na(ret)) %>%
@@ -381,7 +389,9 @@ Do your results broadly line up with those in Panel A of Figure 2 of @Nichols:20
 Do these results imply that accounting income is inherently more informative than cash flows from operations?
 Why or why not?
 
-```{r, include=FALSE, eval=FALSE}
+```{r}
+#| include: false
+#| eval: false
 plot_data <-
   merged %>% 
   filter(!is.na(ret)) %>%
@@ -406,7 +416,9 @@ You may find it helpful to start with the code producing `plot_data` above.
 You may also find it helpful to use the function `pivot_wider` to get information about portfolios in each year into a single row.
 Note that you will only be interested in rows at $t = 0$ (e.g., `filter(rel_td == 0)`).
 
-```{r, include=FALSE, eval=FALSE}
+```{r}
+#| include: false
+#| eval: false
 ai_data <-
   merged %>% 
   filter(!is.na(ret)) %>%
@@ -419,7 +431,8 @@ ai_data <-
   summarize(across(starts_with("aret"), ~ mean(.x, na.rm = TRUE)),
             .groups = "drop",
             nobs = n()) %>%
-  pivot_wider(values_from = matches("^(aret|nobs)"), names_from = "earn_gn") %>%
+  pivot_wider(values_from = matches("^(aret|nobs)"), 
+              names_from = "earn_gn") %>%
   mutate(ai_ew = (aret_ew_TRUE * nobs_TRUE - aret_ew_FALSE * nobs_FALSE)/
            (nobs_TRUE + nobs_FALSE),
          ai_vw = (aret_vw_TRUE * nobs_TRUE - aret_vw_FALSE * nobs_FALSE)/
@@ -429,7 +442,9 @@ ai_data <-
 7. Calculate *NI* by year following the formula on p. 175 of @Ball:1968ub (there denoted as $NI_0$).
 Note that you will only be interested in rows at $t = 0$ (e.g., `filter(rel_td == 0)`).
 
-```{r, include=FALSE, eval=FALSE}
+```{r}
+#| include: false
+#| eval: false
 ni_data <-
   merged %>% 
   filter(!is.na(ret)) %>%
@@ -443,11 +458,12 @@ ni_data <-
             .groups = "drop") 
 ```
   
-  
 8. Using the data on *NI* and *AI* from above, create a plot of $AI/NI$ like that in Figure 2 of @Ball:2019wu.
 Do you observe similar results to those shown in Figure 2 of @Ball:2019wu?
 
-```{r, include=FALSE, eval=FALSE}
+```{r}
+#| include: false
+#| eval: false
 ai_ni_data <-
   ni_data %>%
   inner_join(ai_data, by = "year") %>%
