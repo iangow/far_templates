@@ -74,12 +74,12 @@ Using that CIK, find the 10-K filing for the year ending `2003-11-30` on [the SE
 
 5. Looking at the 10-K you just found, what seems to going on with this observation?
 (*Hint*: Examine the contents of `funda_na_fixed` for this observation to see the issue.
-It may help to look at the components of `ao`, which is has balancing model `ao = dc + aoc`.)
+It may help to look at the components of `ao`, which is has balancing model `ao = dc + aox`.)
 
 6. Using the approach above, we can find the relevant 10-K for the following observation [here](https://www.sec.gov/Archives/edgar/data/1074874/000093041302001117/c23823_10ksb.txt).
 What's going on with this case?
 What's the most significant difference between this case and the one above?
-(*Hint*: The following additional Compustat balancing model may help: `act = ppent + intan + ivao + ao`.)
+(*Hint*: The following additional Compustat balancing model may help: `act = che + rect + invt + aco`.)
 
 ```{r}
 funda_na_fixed %>%
