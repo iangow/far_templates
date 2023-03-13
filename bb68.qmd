@@ -1,11 +1,26 @@
 ---
 title: "Exercise template for 'Ball and Brown (1968)'"
 author: Your name
-format: 
-  html: default
-  pdf: default
+format: html
 bibliography: book.bib
 ---
+
+## Important instructions
+
+Some code chunks below take some time to run.
+Each of these has been labelled and set with `cache: true`.
+When a code chunk is cached, it is re-run only if the code is changed; if the code is unchanged, when compiling this file R will use the cached results from the previous time the code was run.
+You should not need to edit the code in these chunks in preparing your answers.
+When you download this template, you should compile it before editing.
+This will take 10 minutes or so, but the next time you run it should take just seconds.
+If you encounter errors in running the unedited template, please let me know ASAP.
+I highly recommend that you use an RStudio "project" to organize your work for *Financial Accounting Research*.
+
+The code chunks are labelled as follows:
+ 
+ - `wrds_data`
+ - `me_breakpoints`
+ - `size_rets_raw`
 
 ```{r}
 #| message: false
@@ -350,6 +365,8 @@ me_breakpoints_raw %>%
 
 ```{r}
 #| include: false
+#| eval: false
+# To use this code, remove "eval: false" above. To include this code in your submission, remove "include: false" above.
 # We create a new connection to Postgres here so that you don't # need to run the time-consuming code above to answer this
 # question.
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
@@ -375,48 +392,10 @@ Does this tweak significantly affect the results?
 Which approach seems most appropriate?
 That of @Nichols:2004tb or that of @Ball:1968ub?
 
-```{r}
-#| include: false
-#| eval: false
-alt_plot_data <-
-  merged %>% 
-  filter(!is.na(ret)) %>%
-  mutate(aret_ew = ret - ew_ret, aret_vw = ret - ew_ret) %>%
-  group_by(gvkey, datadate) %>%
-  arrange(rel_td) %>%
-  mutate(across(starts_with("aret"), ~ cumprod(1 + .x))) %>%
-  group_by(rel_td, earn_gn) %>% 
-  summarize(across(starts_with("aret"), ~ mean(.x, na.rm = TRUE)),
-            .groups = "drop")
-  
-alt_plot_data %>%
-  ggplot(aes(x = rel_td, y = aret_ew, line = earn_gn)) +
-  geom_line()
-```
-
 4. Create an alternative version of the figure above using the sign of "news" about cash flows in the place of income news.
 Do your results broadly line up with those in Panel A of Figure 2 of @Nichols:2004tb?
 Do these results imply that accounting income is inherently more informative than cash flows from operations?
 Why or why not?
-
-```{r}
-#| include: false
-#| eval: false
-plot_data <-
-  merged %>% 
-  filter(!is.na(ret)) %>%
-  group_by(gvkey, datadate) %>%
-  arrange(rel_td) %>%
-  mutate(across(ends_with("ret"), ~ cumprod(1 + .x))) %>%
-  group_by(rel_td, cfo_gn) %>% 
-  summarize(across(ends_with("ret"), ~ mean(.x, na.rm = TRUE)),
-            .groups = "drop") %>%
-  mutate(aret_ew = ret - ew_ret, aret_vw = ret - ew_ret)
-
-plot_data %>%
-  ggplot(aes(x = rel_td, y = aret_ew, line = cfo_gn)) +
-  geom_line()
-```
 
 5. Create an alternative version of the figure above focused on the extreme earnings deciles in place of the good-bad news dichotomy.
 Do your results broadly line up with those in Panel B of Figure 2 of @Nichols:2004tb?
@@ -426,63 +405,10 @@ You may find it helpful to start with the code producing `plot_data` above.
 You may also find it helpful to use the function `pivot_wider` to get information about portfolios in each year into a single row.
 Note that you will only be interested in rows at $t = 0$ (e.g., `filter(rel_td == 0)`).
 
-```{r}
-#| include: false
-#| eval: false
-ai_data <-
-  merged %>% 
-  filter(!is.na(ret)) %>%
-  group_by(gvkey, datadate) %>%
-  arrange(rel_td) %>%
-  mutate(across(ends_with("ret"), ~ cumprod(1 + .x))) %>%
-  filter(rel_td == 0) %>%
-  mutate(aret_ew = ret - ew_ret, aret_vw = ret - vw_ret)  %>%
-  group_by(year, earn_gn) %>%
-  summarize(across(starts_with("aret"), ~ mean(.x, na.rm = TRUE)),
-            .groups = "drop",
-            nobs = n()) %>%
-  pivot_wider(values_from = matches("^(aret|nobs)"), 
-              names_from = "earn_gn") %>%
-  mutate(ai_ew = (aret_ew_TRUE * nobs_TRUE - aret_ew_FALSE * nobs_FALSE)/
-           (nobs_TRUE + nobs_FALSE),
-         ai_vw = (aret_vw_TRUE * nobs_TRUE - aret_vw_FALSE * nobs_FALSE)/
-           (nobs_TRUE + nobs_FALSE)) 
-```
-
 7. Calculate *NI* by year following the formula on p. 175 of @Ball:1968ub (there denoted as $NI_0$).
 Note that you will only be interested in rows at $t = 0$ (e.g., `filter(rel_td == 0)`).
-
-```{r}
-#| include: false
-#| eval: false
-ni_data <-
-  merged %>% 
-  filter(!is.na(ret)) %>%
-  group_by(gvkey, datadate) %>%
-  arrange(rel_td) %>%
-  mutate(across(ends_with("ret"), ~ cumprod(1 + .x))) %>%
-  filter(rel_td == 0) %>%
-  mutate(ni_ew = abs(ret - ew_ret), ni_vw = abs(ret - vw_ret)) %>%
-  group_by(year) %>%
-  summarize(across(starts_with("ni"), ~ mean(.x, na.rm = TRUE)),
-            .groups = "drop") 
-```
   
 8. Using the data on *NI* and *AI* from above, create a plot of $AI/NI$ like that in Figure 2 of @Ball:2019wu.
 Do you observe similar results to those shown in Figure 2 of @Ball:2019wu?
-
-```{r}
-#| include: false
-#| eval: false
-ai_ni_data <-
-  ni_data %>%
-  inner_join(ai_data, by = "year") %>%
-  mutate(ai_to_ni_ew = ai_ew/ni_ew,
-         ai_to_ni_vw = ai_vw/ni_vw) 
-
-ai_ni_data %>%
-  ggplot(aes(x = year, y = ai_to_ni_ew)) +
-  geom_point()
-```
 
 ## References {-}
