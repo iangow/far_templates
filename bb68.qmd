@@ -340,19 +340,29 @@ max_cutoff <-
 1. From the data below, we see that the cut-off for the tenth decile is about `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` million.
 How can we reconcile this with the existence of firms with market capitalizations over US$1 trillion?
 *Bonus*: Using data from `crsp.msf`, identify the firm whose market capitalization was `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` million in December 2020?
-
-```{r}
-#| include: false
-pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-
-msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
-
-msf %>% filter(date == "2020-12-31") %>% mutate(mktcap = prc * shrout) %>%
-```
+(*Hint*: For the bonus question, you can add a filter to the following code to obtain the answer.
+Why do we need to group by `permco` instead of `permno` to find the answer?)
 
 ```{r}
 me_breakpoints_raw %>% 
   filter(month == "2020-12-01")
+```
+
+```{r}
+#| include: false
+# We create a new connection to Postgres here so that you don't # need to run the time-consuming code above to answer this
+# question.
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
+
+msf %>% 
+  filter(date == "2020-12-31") %>%
+  mutate(mktcap = abs(prc) * shrout/1000.0) %>%
+  group_by(permco, date) %>%
+  mutate(totmktcap = sum(mktcap, na.rm = TRUE)) %>%
+  select(permno, permco, date, mktcap, totmktcap) %>%
+  arrange(totmktcap)
 ```
 
 2. To keep things straightforward, we focused on firms who have returns for each month in the $(t - 11, t + 6)$ window.
