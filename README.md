@@ -30,6 +30,6 @@ Each template below shares its name with the corresponding chapter in the [book]
 
  - [Capital markets research in accounting](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd)
  - [FFJR](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd)
-  - Ball and Brown (1968): Template to come later
+ - [Ball and Brown (1968)](https://raw.githubusercontent.com/iangow/far_templates/main/bb68.qmd)
 
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)
