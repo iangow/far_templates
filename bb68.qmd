@@ -79,7 +79,7 @@ In this section, we follow @Nichols:2004tb in conducting an updated replication 
 
 We get earnings and returns data from Compustat and CRSP, respectively.
 
-```{r}
+```{r wrds_data}
 #| include: false
 #| cache: true
 pg <- dbConnect(RPostgres::Postgres(), 
@@ -157,11 +157,41 @@ me_values <-
   mutate(month = as.Date(floor_date(date, unit = "month"))) %>%
   filter(month(month) == 12) %>%
   collect()
+
+funda_mod <-
+  funda %>%
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") 
+
+news <-
+  funda_mod %>%
+  filter(fyr == 12) %>%
+  group_by(gvkey) %>%
+  window_order(datadate) %>%
+  mutate(lag_ibc = lag(ibc),
+         lag_oancf = lag(oancf),
+         lag_at = lag(at),
+         lag_fyear = lag(fyear)) %>%
+  filter(between(fyear, 1987, 2002),
+         lag_fyear + 1 == fyear) %>%
+  mutate(earn_chg = if_else(lag_at > 0, (ibc - lag_ibc)/lag_at, NA_real_),
+         cfo_chg = if_else(lag_at > 0, (oancf - lag_oancf)/lag_at, NA_real_),
+         earn_gn = earn_chg > 0,
+         cfo_gn = cfo_chg > 0) %>%
+  filter(!is.na(cfo_gn), !is.na(earn_gn)) %>%
+  ungroup() %>%
+  select(gvkey, datadate, earn_chg, cfo_chg, earn_gn, cfo_gn) %>%
+  group_by(datadate) %>% 
+  mutate(earn_decile = ntile(earn_chg, 10),
+         cfo_decile = ntile(cfo_chg, 10)) %>%
+  ungroup() %>%
+  collect()
 ```
 
 ```{r size_rets_raw}
 #| include: false
 #| cache: true
+
 # Download the data
 t <- tempfile(fileext = ".zip")
 url <- paste0("http://mba.tuck.dartmouth.edu",
@@ -203,8 +233,8 @@ read_data <- function(start, end) {
            decile = as.integer(decile)) %>%
     filter(!is.na(decile)) %>%
     select(-quantile)
+}
 
-#| include: false
 vw_rets <- 
   read_data(vw_start, vw_end) %>%
   rename(vw_ret = ret)
@@ -264,38 +294,6 @@ me_decile_assignments <-
   filter(dec_match) %>%
   mutate(year = as.integer(year(date)) + 1L) %>%
   select(permno, year, decile) 
-```
-
-```{r}
-#| include: false
-funda_mod <-
-  funda %>%
-  filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") 
-
-news <-
-  funda_mod %>%
-  filter(fyr == 12) %>%
-  group_by(gvkey) %>%
-  window_order(datadate) %>%
-  mutate(lag_ibc = lag(ibc),
-         lag_oancf = lag(oancf),
-         lag_at = lag(at),
-         lag_fyear = lag(fyear)) %>%
-  filter(between(fyear, 1987, 2002),
-         lag_fyear + 1 == fyear) %>%
-  mutate(earn_chg = if_else(lag_at > 0, (ibc - lag_ibc)/lag_at, NA_real_),
-         cfo_chg = if_else(lag_at > 0, (oancf - lag_oancf)/lag_at, NA_real_),
-         earn_gn = earn_chg > 0,
-         cfo_gn = cfo_chg > 0) %>%
-  filter(!is.na(cfo_gn), !is.na(earn_gn)) %>%
-  ungroup() %>%
-  select(gvkey, datadate, earn_chg, cfo_chg, earn_gn, cfo_gn) %>%
-  group_by(datadate) %>% 
-  mutate(earn_decile = ntile(earn_chg, 10),
-         cfo_decile = ntile(cfo_chg, 10)) %>%
-  ungroup() %>%
-  collect()
 ```
 
 ```{r}
@@ -460,3 +458,5 @@ ai_ni_data %>%
   ggplot(aes(x = year, y = ai_to_ni_ew)) +
   geom_point()
 ```
+
+## References {-}
