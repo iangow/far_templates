@@ -36,7 +36,11 @@ A firm will announce a split several weeks in advance of its effective date.
 Firms do not use splits to signal private information about firm prospects.
 
 Produce a set of indicative plots (e.g., drawn by hand) for the predicted behaviour of cumulative abnormal returns for assuming that the split is announced in month $-2$.
-What impact would variation in the announcement dates relative to the split effective date have on the plots?
+What impact would variation in the announcement dates relative to the splits effective date have on the plots?
+
+![Split theories](split_theories.png){#fig-split}
+
+See @fig-split for some depictions of theories about splits.
 
 ## Dividend policy
 
