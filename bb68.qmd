@@ -352,9 +352,9 @@ max_cutoff <-
   pull()
 ```
 
-1. From the data below, we see that the cut-off for the tenth decile is about `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` million.
+1. From the data below, we see that the upper bound for the tenth decile is about `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` billion.
 How can we reconcile this with the existence of firms with market capitalizations over US$1 trillion?
-*Bonus*: Using data from `crsp.msf`, identify the firm whose market capitalization was `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` million in December 2020?
+*Bonus*: Using data from `crsp.msf`, identify the firm whose market capitalization was `r paste0("US$", prettyNum(max_cutoff/1000, digits = 3))` billion in December 2020?
 (*Hint*: For the bonus question, you can add a filter to the following code to obtain the answer.
 Why do we need to group by `permco` instead of `permno` to find the answer?)
 
