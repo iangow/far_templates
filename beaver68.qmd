@@ -5,6 +5,17 @@ format: html
 bibliography: book.bib
 ---
 
+## Important instructions
+
+The `wrds_data` chunk below takes a couple of minutes to run.
+According, it has been set with `cache: true`.
+When a code chunk is cached, it is re-run only if the code is changed; if the code is unchanged, when compiling this file R will use the cached results from the previous time the code was run.
+You should not need to edit the code in this chunk in preparing your answers.
+Only the last couple of questions relate to code run using this template.
+When you download this template, you should compile it before editing.
+If you encounter errors in running the unedited template, please let me know ASAP.
+I highly recommend that you use an RStudio "project" to organize your work for *Financial Accounting Research*.
+
 ## Market reactions to earnings announcements
 
 ### Discussion questions
