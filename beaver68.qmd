@@ -115,10 +115,10 @@ nyse <-
 
 earn_annc_links <-
   earn_annc_dates %>%
-  left_join(ccm_link, by = "gvkey", relationship = "many-to-many") %>%
+  left_join(ccm_link, by = "gvkey", multiple = "all") %>%
   filter(datadate >= linkdt, 
          rdq <= linkenddt | is.na(linkenddt)) %>%
-  inner_join(nyse, by = "permno", relationship = "many-to-many") %>%
+  inner_join(nyse, by = "permno", multiple = "all") %>%
   filter(rdq >= namedt, rdq <= nameenddt) %>%
   select(gvkey, datadate, rdq, permno)
 
