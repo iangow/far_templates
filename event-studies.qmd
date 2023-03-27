@@ -146,7 +146,7 @@ How appropriate is it to report "most negative" and "most positive" CAR differen
 #### @Larcker:2011vq "LOT"
 1. How do LOT and FFJR differ in terms of the role of market efficiency in their research designs?
 
-2. Consider Table 1.
+2. Consider Table 1 of LOT.
 What are the differences between the event study design in LOT from that in FFJR? 
 What are implications of these differences?
 
