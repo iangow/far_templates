@@ -1,0 +1,159 @@
+---
+title: "Exercise template for 'Event studies'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(DBI)
+library(dbplyr)       # For window_order()
+library(ggplot2)
+library(farr)
+library(stargazer)
+```
+
+```{r}
+#| include: false
+# Change `sg_format` to "text" if viewing the output below on screen
+if (knitr::is_latex_output()) { 
+  sg_format <- "latex"
+} else {
+  sg_format <- "html"
+}
+```
+
+## Overview
+
+### Discussion questions
+
+1. Does @Ball:1968ub meet the @MacKinlay:1997ua definition of an event study?
+What features are present and what, if any, are missing?
+
+2. Does @Beaver:1968vf meet the @MacKinlay:1997ua definition of an event study?
+What features are present and what, if any, are missing?
+
+## The modern event study
+
+### A small event study
+
+```{r apple_reg_data}
+#| include: false
+pg <- dbConnect(RPostgres::Postgres())
+
+stocknames <- tbl(pg, sql("SELECT * FROM crsp.stocknames"))
+dsf <- tbl(pg, sql("SELECT * FROM crsp.dsf"))
+dsi <- tbl(pg, sql("SELECT * FROM crsp.dsi"))
+
+apple_permno <-
+  stocknames %>%
+  filter(ticker == "AAPL") %>%
+  select(permno) %>%
+  distinct() %>%
+  pull()
+
+apple_rets <-
+  dsf %>%
+  inner_join(dsi, by = "date") %>%
+  mutate(mkt_ret = ret - vwretd) %>%
+  select(permno, date, ret, mkt_ret, vol) %>%
+  filter(permno == apple_permno,
+         date >= "2005-01-01") %>%
+  collect()
+
+apple_event_dates <-
+  apple_events %>%
+  mutate(permno = apple_permno) %>%
+  get_event_dates(pg, 
+                  end_event_date = "end_event_date",
+                  win_start = -1, win_end = +1)
+
+apple_reg_data <-
+  apple_rets %>%
+  left_join(apple_event_dates, 
+            join_by(permno, date >= start_date, date <= end_date)) %>%
+  mutate(is_event = !is.na(start_date)) %>%
+  select(permno, date, ret, mkt_ret, vol, is_event)
+```
+
+```{r}
+#| echo: false
+apple_reg_data %>%  
+  arrange(date) %>%
+  mutate(cumret = cumprod(1 + coalesce(ret, 0))) %>%
+  filter(date >= "2020-09-01", date <= "2020-12-31") %>%
+  ggplot(aes(x = date, y = cumret)) +
+  geom_line() +
+  geom_area(mapping = aes(y = if_else(!is_event, cumret, 0),
+                          fill = "Non-event")) +
+  geom_area(mapping = aes(y = if_else(is_event, cumret, 0),
+                          fill = "Event"))
+```
+
+### Exercises
+
+1. How would you expect the plot to change if we used `cumret = exp(cumsum(log(1 + coalesce(ret, 0))))` in place of `cumret = cumprod(1 + coalesce(ret, 0))` in creating the plot above?
+Is there any reason to prefer one calculation over time other?
+
+2. Do we get different results in this case if we use `cumret = cumprod(1 + ret)` (i.e., remove the `coalesce` function)?
+If so, why?
+If not, would we always expect this to be case (e.g., for stocks other than Apple)?
+
+## Event studies and regulation
+
+### Discussion questions
+
+#### @Zhang:2007tv
+
+1. What are the relative merits of raw and abnormal returns in evaluating the effect of SOX on market values of US firms?
+What do you observe in the raw returns for Canada, Europe, and Asia for the four events that are the focus of Panel B of Table 1 of @Zhang:2007tv?
+Does this raise concerns about @Zhang:2007tv's results?
+
+2. Describe the process for constructing the test statistics reported in Panel D of Table 1.
+How compelling are these results?
+Do you agree with the assessment by @Leuz:2007tj [p. 150] that @Zhang:2007tv is "very careful in assessing the significance of the event returns"?
+
+3. Describe in detail how you might conduct statistical inference using **randomization inference** in the setting of (see Section \@ref(fhk-inference) for more on this approach)?
+What are the challenges faced and design choices you need to make in applying this approach?
+Does your approach differ from the bootstrapping approach used in @Zhang:2007tv?
+
+4. @Leuz:2007tj identifies studies other than @Zhang:2007tv that find evidence that SOX was beneficial to firms?
+How can these sets of results be reconciled?
+What steps would you look to undertake to evaluate the conflicting claims of the two papers?
+
+#### @Khan:2017wa
+
+1. What is the research question examined in @Khan:2017wa? (Hint: Read the title.)
+2. @Khan:2017wa [p. 210] argue that "an ideal research design to evaluate the benefits of accounting standards is to compare a voluntary disclosure regime, in which firms disclose information required by a particular standard, with a mandatory disclosure regime, in which firms are required to disclose that same information." 
+Do you agree that this research design would be "ideal" to address the question? What is the implied treatment in this ideal design?
+3. Compare the Apple event study above with @Khan:2017wa. 
+What are the relative strengths and weaknesses of the two studies?
+Do you think an event-study approach is appropriate for addressing the question "do Apple products add value?" 
+Do you think an event-study approach is appropriate for addressing the research question of @Khan:2017wa? 
+Why or why not?
+4. Do you think that standard-setters would view "reduction in estimation risk" as a goal of accounting standards?
+Evaluate the quality of the arguments linking improved standards to reduced estimation risk.
+The null hypothesis for Panel A is that the CAR of affected firms is not different from CAR of unaffected firms. 
+How appropriate is it to report "most negative" and "most positive" CAR differences only? 
+(Hint: If the null hypothesis is true, how many standards might you expect to have "statistically significant" coefficients?)
+5. Interpret the results of Table 5, Panel B.
+
+#### @Larcker:2011vq "LOT"
+1. How do LOT and FFJR differ in terms of the role of market efficiency in their research designs?
+2. Consider Table 1. 
+What are the differences between the event study design in LOT from that in FFJR? 
+What are implications of these differences?
+3. How do you think Table 1 was developed?
+Do you see potential problems in the process underlying Table 1?
+Can you suggest alternative approaches to developing Table 1?
+4. Consider proxy access, as some of the core results of the paper relate to proxy access.
+If you were a shareholder in a company, what concerns might you have about proxy access?
+Why might this decrease the value of your shares? 
+Think about this is concrete terms; be specific about the kinds of circumstances where value will be reduced.
+How well do the variables *NLargeBlock* and *NSmallCoalitions* measure the exposure of firms to the issues you identified in the previous question? 
+(As part of this, consider the timing of variable measurement relative to the timing of possible value-reducing outcomes.)
+5. LOT makes use of a number of **Monte Carlo simulations**.
+How do these compare with the bootstrapping analyses conducted by @Zhang:2007tv?
+Are the simulation addressing the same underlying issues as @Zhang:2007tv bootstrapping approach?
