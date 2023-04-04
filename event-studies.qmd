@@ -108,10 +108,10 @@ If not, would we always expect this to be case (e.g., for stocks other than Appl
 #### @Zhang:2007tv
 
 1. What are the relative merits of raw and abnormal returns in evaluating the effect of SOX on market values of US firms?
-What do you observe in the raw returns for Canada, Europe, and Asia for the four events that are the focus of Panel B of Table 1 of @Zhang:2007tv?
+What do you observe in the raw returns for Canada, Europe, and Asia for the four events that are the focus of Panel B of Table 2 of @Zhang:2007tv?
 Does this raise concerns about @Zhang:2007tv's results?
 
-2. Describe the process for constructing the test statistics reported in Panel D of Table 1.
+2. Describe the process for constructing the test statistics reported in Panel D of Table 2.
 How compelling are these results?
 Do you agree with the assessment by @Leuz:2007tj [p. 150] that @Zhang:2007tv is "very careful in assessing the significance of the event returns"?
 

@@ -24,7 +24,7 @@ I highly recommend that you use an RStudio "project" to organize your work for *
 If there is overlap, do you think that one paper provides superior evidence to the other?
 Or are they just different?
 
-2. What differences are there in the data (e.g., sample period) used in  @Beaver:1968vf from the data used in @Ball:1968ub?
+2. What differences are there in the data (e.g., sample period) used in @Beaver:1968vf from the data used in @Ball:1968ub?
 Why do these differences exist?
 
 3. Do the reasons given by @Beaver:1968vf for his sample selection criteria seem reasonable? 
