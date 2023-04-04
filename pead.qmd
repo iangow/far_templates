@@ -5,6 +5,11 @@ format: html
 bibliography: book.bib
 ---
 
+Some code chunk below are set as `eval: false` so that they are not executed.
+Together these code chunks take some time to run and it is not necessary to run them to answer the questions below.
+If you did want to run those code chunks, you could change these to `eval: true`.
+You can delete this note in preparing your submission.
+
 ```{r}
 #| message: false
 #| include: false
@@ -38,6 +43,7 @@ pg <- dbConnect(RPostgres::Postgres(),
 funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
 fundq <- tbl(pg, sql("SELECT * FROM comp.fundq"))
 company <- tbl(pg, sql("SELECT * FROM comp.company"))
+ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist")) 
 
 funda_mod <-
   funda %>%
@@ -104,6 +110,14 @@ ni_qtrly <-
   fundq_mod %>%
   select(gvkey, datadate, fyr, fqtr, saleq, niq, ibq) %>%
   rename(datadateq = datadate) %>%
+  collect()
+
+ccm_link <-
+  ccmxpf_lnkhist %>%
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) %>%
+  mutate(linkenddt = coalesce(linkenddt,
+                              max(linkenddt, na.rm = TRUE))) %>%
   collect()
 ```
 
@@ -239,9 +253,27 @@ Can you suggest an alternative approach to measuring performance that might plac
 ## Post-earnings announcement drift
 
 ```{r reg_data_fos}
-#| eval: false
+#| eval: true
 #| include: false
 #| cache: true
+qtr_num <-
+  merged_data %>% 
+  group_by(gvkey, datadate) %>% 
+  count(name= "num_quarters") %>% 
+  ungroup()
+
+regular_fyears <-
+  firm_years %>%
+  inner_join(qtr_num, by = c("gvkey", "datadate")) %>%
+  group_by(gvkey) %>%
+  arrange(gvkey, datadate) %>%
+  mutate(fyear_length = datadate - lag(datadate)) %>%
+  ungroup() %>%
+  mutate(regular_year = num_quarters == 4 & 
+           (is.na(fyear_length) | fyear_length %in% c(365, 366))) %>%
+  filter(regular_year) %>%
+  select(gvkey, datadate)
+
 reg_data_fos <-
   merged_data %>%
   semi_join(regular_fyears, by = c("gvkey", "datadate")) %>%
@@ -255,9 +287,8 @@ reg_data_fos <-
   ungroup()
 ```
 
-
 ```{r}
-#| eval: false
+#| eval: true
 #| include: false
 fit_model_fos <- function(gvkey, quarter) {
 
@@ -324,11 +355,11 @@ fit_model_fos <- function(gvkey, quarter) {
 ```{r results}
 #| dependson: reg_data_fos
 #| cache: true
-#| eval: false
+#| eval: true
 #| include: false
 quarters <-
   reg_data_fos %>% 
-  filter(qtr >= 1974, qtr < 1987) %>%
+  filter(qtr >= 2010, qtr < 2020) %>%
   select(qtr) %>% 
   distinct() %>%
   arrange(qtr) %>%
@@ -351,19 +382,11 @@ get_results <- function(quarter) {
 ```{r}
 #| eval: false
 #| include: false
+#| label: results-2
+#| cache: true
+
 results <- bind_rows(lapply(quarters, get_results))
 ```
-
-  
-```{r results_3}
-#| eval: false
-#| include: false
-#| dependson: results
-#| cache: true
-library(parallel)
-results <- bind_rows(mclapply(quarters, get_results, mc.cores = 4))
-```
-
 
 ```{r}
 #| eval: false
@@ -406,16 +429,6 @@ results_deciles <-
 #| cache: true
 #| eval: false
 #| include: false
-ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist")) 
-
-ccm_link <-
-  ccmxpf_lnkhist %>%
-  filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) %>%
-  mutate(linkenddt = coalesce(linkenddt,
-                              max(linkenddt, na.rm = TRUE))) %>%
-  collect()
-  
 link_table <-
   results_deciles %>%
   select(gvkey, rdq) %>%
@@ -448,13 +461,11 @@ plot_data <-
               .groups = "drop") 
 ``` 
 
-In making the plot below, note that we set abnormal returns for the first trading day in each plot to zero, so that the plots depict returns starting from day $t-59$ in the first plot and from day $t+1$ in the second plot.
-We also add a label to the last day of the series so that we don't need a legend.
-
 ```{r}
+#| label: plot-pre
 #| fig-cap: Pre-announcement returns
 #| eval: false
-#| include: false
+#| echo: false
 plot_data %>%
   filter(relative_td <= 0) %>%
   filter(!is.na(decile)) %>%
@@ -475,9 +486,11 @@ plot_data %>%
 ```
 
 ```{r}
+#| label: plot-post
+#| fig-cap: Post-announcement returns
 #| output: asis
 #| eval: false
-#| include: false
+#| echo: false
 plot_data %>%
   filter(relative_td >= 0) %>%
   filter(!is.na(decile)) %>%
@@ -497,7 +510,7 @@ plot_data %>%
 
 ### Discussion questions
 
-1. A common feature of @Bernard:1989uu and @Ball:1968ub, is that both were addressing issues with "conventional wisdom" at their respective times. 
+1. A common feature of @Bernard:1989uu and @Ball:1968ub is that both were addressing issues with "conventional wisdom" at their respective times. 
 How had conventional wisdom changed in the years between 1968 and 1989?
 2.	Evaluate the introduction of @Bernard:1989uu.
 How clear is the research question to you from reading this? 
@@ -506,7 +519,7 @@ With other papers you have seen?
 3. How persuasive do you find @Bernard:1989uu to be? 
 (Obviously answering this one requires reading the paper fairly closely.)
 4. The analysis above considers the 13-year period from 1974 to 1986.
-What changes would you need to make to the code to run the analysis for the 13-year period from 2007 to 2019?
+What changes would you need to make to the code to run the analysis for the 10-year period from 2010 to 2019?
 (If you choose to make this change and run the code, what do you notice about the profile of returns in the post-announcement period?
 Does it seem necessary to make an additional tweak to the code to address this?)
 5. Considering a single stock, what trading strategy is implicit in calculating `ar` as `ret - decret`?
@@ -515,4 +528,4 @@ What issues are created by this trading strategy?
 Can you suggest an alternative trading strategy?
 What changes to the code would be needed to implement this alternative?
 7. Is it appropriate to *add* returns to get cumulative abnormal returns as is done in `car = cumsum(ar)`? 
-What would be one alternative approach?
+What would be an alternative approach?
