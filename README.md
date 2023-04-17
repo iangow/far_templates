@@ -34,5 +34,6 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Beaver (1968)](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68.qmd)
  - [Event studies](https://raw.githubusercontent.com/iangow/far_templates/main/event-studies.qmd)
  - [Post-earnings announcement drift](https://raw.githubusercontent.com/iangow/far_templates/main/pead.qmd)
+ - [Accruals](https://raw.githubusercontent.com/iangow/far_templates/main/accruals.qmd)
 
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)

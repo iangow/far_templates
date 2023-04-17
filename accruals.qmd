@@ -1,0 +1,650 @@
+---
+title: "Exercise template for 'Accruals'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+# @Sloan:1996wd
+
+```{r}
+#| message: false
+#| echo: false
+library(dplyr, warn.conflicts = FALSE)
+library(dbplyr)     # For the window_order() function
+library(ggplot2)
+library(DBI)
+library(lubridate)
+library(car)        # For linearHypothesis
+library(farr)
+library(stargazer)
+```
+
+```{r}
+#| include: false
+if (knitr::is_latex_output()) {
+  sg_format <- "latex"
+} else {
+  sg_format <- "html"
+}
+```
+
+We use the `stargazer` package for regression output and set `sg_format` to `"`r sg_format`"` here (set `sg_format <- "text"` in your console if viewing the output below on screen).
+
+## @Sloan:1996wd {#accr-anom}
+
+### Discussion questions
+
+The following discussion questions provide an approach to reading @Sloan:1996wd.
+While one approach to reading a paper involves a careful reading from start to finish, a useful skill is being able to read a paper quickly with a focus on the empirical results and the hypotheses these test.
+
+1. Read the material preceding the formal statement of H1. 
+What reasons for differential persistence of earnings components does @Sloan:1996wd offer?
+How important is it for these reasons to be correct in light of the empirical support for H1 provided in Table 3?
+How important is the empirical support for H1 to H2(i)?
+2. Which hypothesis (if any) does Table 4 test? 
+How would you interpret the results of Table 4 in words?
+3. Which hypothesis (if any) does Table 5 test? 
+How would you interpret the results of Table 5 in words?
+4. Which hypothesis (if any) does Table 6 test? 
+How would you interpret the results of Table 6 in words?
+There are similarities between the results of Table 6 of @Sloan:1996wd and the results in @Bernard:1989uu.
+Both involve forming portfolios of firms based on deciles of some variable [accruals in @Sloan:1996wd, earnings surprise in @Bernard:1989uu] and examining how those portfolios perform subsequently.
+Apart from the measure used to form portfolios, what are the significant differences between the analyses in the two papers that you can think of looking at Table 6?
+5. With which hypothesis (if any) is Figure 2 related?
+What does Figure 2 show according to @Sloan:1996wd?
+6. With which hypothesis (if any) is Figure 3 related?
+What does Figure 3 show according to @Sloan:1996wd?
+
+## Measuring accruals
+
+@Hribar:2002wc include a definition of accruals similar to that used in @Sloan:1996wd.
+Referring to prior research, they state [-@Hribar:2002wc, p.10]:
+
+>Specifically, accruals ($\mathit{ACC}_{bs}$) are typically calculated (firm and time subscripts omitted for convenience):
+>
+> $$ \mathit{ACC}_{bs} = (\Delta \mathit{CA} - \Delta \mathit{CL} - \Delta \mathit{Cash} + \Delta \mathit{STDEBT} - \mathit{DEP} )$$
+where 
+>
+> - $\Delta \mathit{CA}$ = the change in current assets during period $t$ (Computstat #4)
+> - $\Delta \mathit{CL}$ = the change in current liabilities during period $t$  (Compustat #5)
+> - $\Delta \mathit{Cash}$ = the change in cash and cash equivalents during period $t$ (Compustat #1); 
+> - $\Delta \mathit{STDEBT}$ = the [change in] current maturities of long-term debt and other short-term debt included in current liabilities during period $t$ (Computstat #34);
+> - and $\Delta \mathit{DEP}$ = depreciation and amortization expense during period $t$ (Compustat #14).
+>
+> All variables are deflated by lagged total assets ($\mathit{TA}_{t-1}$) to control for scale differences.
+
+WRDS provides [translation tables](https://wrds-www.wharton.upenn.edu/pages/support/manuals-and-overviews/compustat/north-america-global-bank/variable-translations-compann-compqtr-and-pde/#ftp-to-xpressfeed-variable-translations) from these items to the current variables.
+
+| Old item | Current item | Item description |
+|----------|--------------|------------------|
+| #1       | `che`        | Cash and Short-Term Investments |
+| #4       | `act`        | Current Assets - Total |
+| #5       | `lct`        | Current Liabilities - Total |
+| #34      | `dlc`        | Debt in Current Liabilities - Total |
+| #14      | `dp`         |	Depreciation and Amortization |
+
+### Discussion questions
+
+1. In the equation above, why is $\Delta \mathit{Cash}$ subtracted?
+2. In the equation above, why is $\Delta \mathit{STDEBT}$ added?
+3. Is it true that mergers and divestitures have "no earnings impact"? 
+Is the absence of earnings impact important to the estimation issue? 
+Are there transactions that have no earnings impact, but do affect cash flow from operations?
+4. Are there any differences between the definition of accruals in @Hribar:2002wc ($\mathit{ACC}_{bs}$ above) and that in @Sloan:1996wd?
+Which definition makes more sense to you? Why?
+
+## Simulation analysis
+
+
+### Vectors
+
+### Simulation function
+
+```{r}
+#| include: false
+get_data <- function(add_perc = 0.03, n_years = 20) {
+    
+    # Parameters
+    add_true <- 0.03
+    gross_margin <- 0.8
+    beg_cash <- beg_se <- 1500
+    div_payout <- 1
+    mean_sale <- 1000
+    sd_sale <- 100
+    rho <- 0.9
+    
+    # Generate sales as an AR(1) process around mean_sale
+    sale_disturb <- rnorm(n_years, sd = sd_sale)
+    sales <- vector("double", n_years)
+    sales[1] <- mean_sale + sale_disturb[1]
+    for (i in 2:n_years) {
+       sales[i] = mean_sale +  rho * (sales[i-1] - mean_sale) + sale_disturb[i]
+    }
+    
+    # Combine data so far into a data frame; add slots for variables to come
+    df <- tibble(year = 1:n_years, 
+                 add_perc = add_perc, 
+                 sales,
+                 writeoffs = NA_real_, collections = NA_real_, div = NA_real_, 
+                 se = NA_real_, ni = NA_real_, bde = NA_real_, cash = NA_real_)
+    
+    # All sales at the same margin
+    df$cogs <- (1 - gross_margin) * df$sales
+    
+    # All sales are on credit; collections (and writeoffs) occur in next period
+    df$ar <- df$sales
+    
+    # Allowance for doubtful debts
+    df$add <- add_perc * df$sales
+    
+    # Calculate year-1 values
+    df$writeoffs[1] <- 0
+    df$collections[1] <- 0
+    df$bde[1] <- df$add[1]
+    df$ni[1] <- df$sales[1] - df$cogs[1] - df$bde[1]
+    df$div[1] <- df$ni[1] * div_payout
+    df$cash[1] <- beg_cash + df$collections[1] - df$cogs[1] - df$div[1]
+    df$se[1] <- beg_se + df$ni[1] - df$div[1]
+    
+    # Loop through years from 2 to n_years
+    for (i in 2:n_years) {
+        df$writeoffs[i] <- add_true * df$ar[i-1]
+        df$collections[i] <- (1 - add_true) * df$ar[i-1]
+        df$bde[i] = df$add[i] - df$add[i-1] + df$writeoffs[i]
+        df$ni[i] <- df$sales[i] - df$cogs[i] - df$bde[i]
+        df$div[i] <- df$ni[i] * div_payout
+        df$cash[i] <- df$cash[i-1] + df$collections[i] - df$cogs[i] - df$div[i] 
+        df$se[i] <- df$se[i-1] + df$ni[i] - df$ni[i]
+    }
+    
+    df
+}
+```
+ 
+```{r}
+#| include: false
+set.seed(2021)
+df_1000 <- get_data(n_years = 1000)
+
+df_1000 %>%
+  filter(year <= 20) %>%
+  ggplot(aes(x = year)) + 
+  geom_line(aes(y = sales), colour = "red") +
+  geom_line(aes(y = mean(sales)), colour = "blue")
+```
+
+```{r}
+#| label: res_df
+#| cache: true
+#| include: false
+add_percs <- runif(n = 5000, min = 0.01, max = 0.05)
+res_list <- lapply(add_percs, get_data)
+res_df <- bind_rows(res_list, .id = "id")
+```
+
+```{r}
+#| label: results
+#| include: false
+#| cache: true
+#| dependson: res_df
+get_coefs <- function(df) {
+    fm <- 
+        df %>%
+        arrange(year) %>% 
+        mutate(lag_ni = dplyr::lag(ni)) %>%
+        lm(ni ~ lag_ni, data = .)
+    tibble(add_perc = mean(df$add_perc), 
+           persistence = fm$coefficients[2])
+}
+
+results <- bind_rows(lapply(res_list, get_coefs), .id = "id")
+```
+
+```{r}
+#| include: false
+results %>%
+  ggplot(aes(x = add_perc, y = persistence)) +
+  geom_point()
+```
+
+### Exercises
+
+1. When generating simulated financial statement data, it is generally important to ensure that the generated data meet basic requirements.
+What is one fundamental relation that we expect to hold?
+Does it hold for the data in `df_1000`?
+2. Calculate values for cash flows from operating activities and cash flows from financing activities. (Treat payment of dividends as a financing activity. *Hint*: You may find it easier to use the **direct method** to calculate cash flows from operating activities.)
+Does the cash flow statement articulate as it should?
+3. How evident is the underlying process generating the sales process from the plot of the first twenty years of data from `df_1000`?
+Does looking at more data help?
+(Obviously, having a thousand years of data on a firm with a stationary process is not common.)
+4. What is the "correct" value of `add_perc` that should be used? 
+Using the plot from `results` above, what is the relation between values of departing from that value and persistence?
+Does this agree with your intuition?
+What's going on?
+What aspects of the `add_perc`-related accounting seem unrealistic?
+(*Hint*: It may help to use variant of the following code `set.seed(2021); get_data(0.03)` for various values in place of `0.03` and to examine how the earnings process is affected.)
+5. Does the simulation analysis speak to the underlying rationale for H1 of @Sloan:1996wd?
+If so, why?
+If not, what might be missing from the analysis?
+How might we modify the simulation to incorporate the missing elements?
+
+## Replicating @Sloan:1996wd
+
+```{r}
+#| message: false 
+#| warning: false
+#| cache: true
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), 
+                bigint = "integer", 
+                check_interrupts = TRUE)
+
+funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
+company <- tbl(pg, sql("SELECT * FROM comp.company"))
+ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist"))
+msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
+
+sics <- 
+  company %>%
+  select(gvkey, sic)
+
+funda_mod <-
+  funda %>%
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") %>%
+  left_join(sics) %>%
+  mutate(sic = coalesce(sich, as.integer(sic)))
+
+acc_data_raw <-
+  funda_mod %>% 
+  filter(!is.na(at),
+         pddur == 12, 
+         exchg %in% c(11L, 12L)) %>%
+  mutate(finance = between(sic, 6000, 6999),
+         across(c(che, dlc, txp), ~ coalesce(., 0))) %>%
+  group_by(gvkey) %>%
+  window_order(datadate) %>%
+  mutate(avg_at = (at + lag(at))/2,
+         d_ca = act - lag(act),
+         d_cash = che - lag(che),
+         d_cl = lct - lag(lct),
+         d_std = dlc - lag(dlc),
+         d_tp = txp - lag(txp)) %>%
+  select(gvkey, datadate, fyear, avg_at, at, oiadp, dp, finance,
+         starts_with("d_"), sic, pddur) %>%
+  mutate(acc_raw =  (d_ca - d_cash) - (d_cl - d_std - d_tp) - dp) %>%
+  ungroup() %>%
+  filter(between(fyear, 1962, 1991),
+         avg_at > 0)
+
+get_deciles <- function(x) {
+  breaks <- quantile(x, probs = seq(from = 0, to = 1, by = 0.1),
+                     na.rm = TRUE)
+  breaks[length(breaks)] <- Inf
+  list(breaks)
+}
+
+form_deciles <- function(x) {
+  cuts <- get_deciles(x)
+  cut(x, cuts[[1]], labels = FALSE, include.lowest = TRUE)
+}
+
+acc_data <- 
+  acc_data_raw %>%
+  mutate(earn = oiadp/avg_at,
+         acc = acc_raw/avg_at,
+         cfo = earn - acc) %>%
+  group_by(gvkey) %>%
+  window_order(datadate) %>%
+  mutate(lead_earn = lead(earn)) %>%
+  ungroup() %>% 
+  collect() %>%
+  mutate(acc_decile = form_deciles(acc),
+         earn_decile = form_deciles(earn),
+         cfo_decile = form_deciles(cfo),
+         lead_earn_decile = form_deciles(lead_earn),
+         sic2 = substr(as.character(sic), 1, 2)) %>% 
+  filter(!finance, !is.na(acc))  
+
+ccm_link <-
+    ccmxpf_lnkhist %>%
+    filter(linktype %in% c("LC", "LU", "LS"),
+           linkprim %in% c("C", "P")) 
+
+crsp_link <-
+  acc_data_raw %>%
+  select(gvkey, datadate) %>%
+  inner_join(ccm_link, by = "gvkey") %>%
+  filter(between(datadate, linkdt, linkenddt)) %>%
+  select(gvkey, datadate, lpermno) %>%
+  rename(permno = lpermno) %>% 
+  mutate(start_month = as.Date(date_trunc('month', 
+                                          datadate + sql("interval '4 months'"))),
+         end_month = as.Date(date_trunc('month', 
+                                          datadate + sql("interval '16 months'"))
+                             - sql("interval '1 day'")))
+
+crsp_data <-
+  crsp_link %>%
+  inner_join(msf, by = "permno") %>%
+  filter(between(date, start_month, end_month)) %>%
+  group_by(gvkey, permno, datadate) %>%
+  summarize(ret = exp(sum(log(1 + ret), na.rm = TRUE)) - 1,
+            n_months = n(),
+            .groups = "drop") %>%
+  collect()
+
+crsp_dates <-
+  msf %>%
+  select(date) %>%
+  distinct() %>%
+  mutate(month = as.Date(date_trunc('month', date)))
+
+me_values <- 
+  crsp_link %>% 
+  mutate(month = as.Date(date_trunc('month', datadate))) %>%
+  inner_join(crsp_dates, by = "month") %>%
+  inner_join(msf, by = c("permno", "date")) %>%
+  mutate(mktcap = abs(prc) * shrout/1000.0) %>% 
+  select(permno, datadate, month, mktcap) %>%
+  collect()
+```
+
+```{r}
+#| label: size-rets
+#| include: false 
+#| cache: true
+size_rets <- get_size_rets_monthly()
+```
+
+```{r}
+#| label: me-breakpoints
+#| include: false 
+#| cache: true
+me_breakpoints <- get_me_breakpoints()
+```
+
+```{r}
+#| include: false 
+me_decile_assignments <-
+  me_breakpoints %>%
+  inner_join(me_values, 
+             join_by(month, me_min <= mktcap, me_max > mktcap)) %>%
+  select(permno, datadate, decile) 
+```
+
+
+```{r}
+#| include: false
+cum_size_rets <-
+  me_decile_assignments %>%
+  select(datadate, decile) %>%
+  distinct() %>%
+  mutate(start_month = datadate %m+% months(4),
+         end_month =  datadate %m+% months(16)) %>%
+  inner_join(size_rets, 
+             join_by(decile, start_month <= month, end_month >= month)) %>%
+  group_by(datadate, decile) %>%
+  summarize(ew_ret = exp(sum(log(1 + ew_ret), na.rm = TRUE)) - 1,
+            vw_ret = exp(sum(log(1 + vw_ret), na.rm = TRUE)) - 1,
+            n_size_months = n(),
+            .groups = "drop")
+```
+
+```{r}
+#| include: false
+size_adj_rets <-
+  crsp_data %>%
+  inner_join(me_decile_assignments, by = c("permno", "datadate")) %>%
+  inner_join(cum_size_rets, by = c("datadate", "decile")) %>%
+  mutate(size_adj_ret = ret - vw_ret) %>%
+  select(gvkey, datadate, size_adj_ret, n_months, n_size_months)
+```
+
+```{r}
+#| include: false
+reg_data <-
+  acc_data %>%
+  inner_join(size_adj_rets, by = c("gvkey", "datadate"))
+```
+
+```{r}
+#| echo: false
+#| include: false
+reg_data %>%
+  group_by(acc_decile) %>% 
+  summarize(across(c(acc, earn, cfo), ~ mean(., na.rm = TRUE))) %>%
+  knitr::kable(digits = 3)
+```
+
+### Table 2 of @Sloan:1996wd
+
+```{r}
+#| output: asis
+#| include: false
+fms <- list()
+fms[[1]] <- lm(lead_earn ~ earn, data = reg_data)
+fms[[2]] <- lm(lead_earn_decile ~ earn_decile, data = reg_data)
+stargazer(fms, type = sg_format, header = FALSE)
+```
+
+```{r}
+#| include: false
+run_table_ind <- function(sic2, lhs = "lead_earn", rhs = "earn") {
+  df <- 
+    reg_data %>% 
+    filter(sic2 == !!sic2)
+  
+  fm <- lm(as.formula(paste0(lhs, " ~ ", rhs)), data = df)
+
+  coefs <- as_tibble(t(fm$coefficients))
+  names(coefs) <- colnames(t(fm$coefficients))
+  df <- bind_cols(sic2 = sic2, coefs)
+  df
+}
+
+stats_for_table <- function(x) {
+  qs <- quantile(x, probs = c(0.25, 0.50, 0.75), na.rm = TRUE)
+  
+  tibble(mean = mean(x, na.rm = TRUE),
+         q1 = qs[1], median = qs[2], q3 = qs[3])
+}
+ 
+summ_for_table <- function(lhs = "lead_earn", rhs = "earn") {
+  unique(reg_data$sic2) %>% 
+    lapply(run_table_ind, lhs = lhs, rhs = rhs) %>%
+    bind_rows() %>%
+    select(-sic2) %>% 
+    lapply(., stats_for_table) %>%
+    bind_rows() %>%
+    knitr::kable(digits = 3) 
+}
+```
+
+```{r}
+#| include: false
+summ_for_table(lhs = "lead_earn", rhs = "earn")
+summ_for_table(lhs = "lead_earn_decile", rhs = "earn_decile")
+```
+
+### Table 3 of @Sloan:1996wd
+
+```{r}
+#| output: asis
+#| include: false
+fms <- list()
+fms[[1]] <- lm(lead_earn ~ acc + cfo, data = reg_data)
+fms[[2]] <- lm(lead_earn_decile ~ acc_decile + cfo_decile, data = reg_data)
+stargazer::stargazer(fms, type = sg_format, header = FALSE)
+```
+
+
+```{r}
+#| include: false
+summ_for_table(lhs = "lead_earn", rhs = "acc + cfo")
+summ_for_table(lhs = "lead_earn_decile", rhs = "acc_decile + cfo_decile")
+```
+
+### Pricing of earnings components
+
+```{r}
+#| output: asis
+#| include: false
+mms <- list()
+mms[[1]] <- lm(size_adj_ret ~ lead_earn + acc + cfo, 
+               data = reg_data)
+mms[[2]] <- lm(size_adj_ret ~ lead_earn_decile + acc_decile + cfo_decile,
+               data = reg_data)
+stargazer(mms, type = sg_format, header = FALSE)
+```
+
+```{r}
+#| output: asis
+#| include: false
+eff <- list()
+eff[[1]] <- lm(size_adj_ret ~ acc + cfo, data = reg_data)
+eff[[2]] <- lm(size_adj_ret ~ acc_decile + cfo_decile, data = reg_data)
+stargazer(eff, type = sg_format, header = FALSE)
+```
+
+### Exercises
+
+1. In the code creating `acc_data_raw`, we used `coalesce()` to set the value of certain variables to zero when missing on Compustat.
+Does this seem appropriate here?
+Are the issues similar to those observed with regard to R&D in Chapter \@ref(fin-state-reprise)?
+It may be helpful to find some observations from recent years where this use of the `coalesce()` function has bite and think about the issues in context of financial statements for those firm-years.
+2. Can you reconcile the results from the @Abel:1983um test with those from the previous regressions? (*Hint*: Pay attention to sample composition; you may need to tweak these regressions    .)
+
+```{r, eval=FALSE, include=FALSE}
+fm1 <- lm(lead_earn ~ acc + cfo, data = reg_data, subset=!is.na(size_adj_ret))
+fm2 <- lm(size_adj_ret ~ lead_earn + acc + cfo, data = reg_data)
+fm3 <- lm(size_adj_ret ~ acc + cfo, data = reg_data, subset=!is.na(lead_earn))
+
+# The following two values are identical!
+-fm2$coefficients[3]/fm2$coefficients[2] - fm1$coefficients[2]
+-fm3$coefficients[2]/fm2$coefficients[2]
+```
+
+3. The equations estimated in Table 5 of @Sloan:1996wd could be viewed as a structural (causal) model.
+Can you represent this model using a causal diagram?
+In light of the apparent econometric equivalence between that structural model and the estimation approach used in @Abel:1983um, how might the structural model using the latter approach?
+
+4. A critique of @Sloan:1996wd made by @Kraft:2007wg is that the coefficients may be biased due to omitted variables.
+This critique implies a causal interpretation of the coefficients in @Sloan:1996wd.
+How might the critique of @Kraft:2007wg be represented on the causal diagrams above?
+How persuasive do you find the the critique of @Kraft:2007wg to be?
+
+5. Apart from the different data sources used, another difference between the simulation analysis earlier in this chapter and the regression analysis in Table 3 of @Sloan:1996wd is the regression model used.
+Modify the code below to incorporate the appropriate formulas for cash flow from operating activities (`cfo`) and accruals (`acc`).
+Then replicate the pooled analysis of Panel A of Table 3 of @Sloan:1996wd using the resulting `sim_reg_data` data frame.
+What do you observe?
+
+```{r}
+#| eval: false
+sim_reg_data <-
+  res_df %>%
+  mutate(cfo = [PUT CALC HERE], acc = [PUT CALC HERE]) %>%
+  group_by(id) %>%
+  arrange(id, year) %>%
+  mutate(lag_cfo = lag(cfo),
+         lag_acc = lag(acc)) %>%
+  ungroup()
+```
+
+6. Which hypothesis does Figure 1 of @Sloan:1996wd relate to?
+What aspects of the plot make it easier or more difficult to interpret the results?
+The following code replicates a version of Figure 1 from @Sloan:1996wd using our simulated data.
+On the basis of these plots and the arguments given in @Sloan:1996wd, is H1 true in our simulated data?
+Given the other analysis above, is H1 true in our simulated data?
+
+```{r}
+#| eval: false
+#| include: false
+year_of_event <- 10
+
+decile_data <-
+  sim_reg_data %>%
+  filter(year == year_of_event) %>%
+  mutate(cfo_decile = form_deciles(cfo),
+         ni_decile = form_deciles(ni),
+         acc_decile = form_deciles(acc)) %>%
+  select(id, ends_with("decile")) 
+
+reg_data_deciles <-
+  sim_reg_data %>%
+  inner_join(decile_data, by = "id")
+
+reg_data_deciles %>% 
+  filter(ni_decile %in% c(1, 10)) %>%
+  mutate(ni_decile = as.factor(ni_decile),
+         event_year = year - year_of_event) %>%
+  group_by(ni_decile, year) %>%
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = year, y = ni, group= ni_decile, color = ni_decile)) +
+  geom_line()
+
+reg_data_deciles %>% 
+  filter(cfo_decile %in% c(1, 10)) %>%
+  mutate(cfo_decile = as.factor(cfo_decile),
+         event_year = year - year_of_event) %>%
+  group_by(cfo_decile, year) %>%
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = year, y = ni, group = cfo_decile, color = cfo_decile)) +
+  geom_line()
+
+reg_data_deciles %>% 
+  filter(acc_decile %in% c(1, 10)) %>%
+  mutate(acc_decile = as.factor(acc_decile),
+         event_year = year - year_of_event) %>%
+  group_by(acc_decile, year) %>%
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = year, y = ni, group = acc_decile, color = acc_decile)) +
+  geom_line()
+```
+
+## Accrual anomaly
+
+```{r}
+#| include: false
+fm <-
+  reg_data %>% 
+  group_by(fyear, acc_decile) %>%
+  summarize(size_adj_ret = mean(size_adj_ret, na.rm = TRUE), .groups = "drop") %>%
+  mutate(acc_decile = as.factor(acc_decile)) %>%
+  lm(size_adj_ret ~ acc_decile - 1, data = .)
+```
+
+```{r}
+#| include: false
+stargazer(fm, type = sg_format, header = FALSE)
+```
+
+```{r}
+#| include: false
+hedge_ret <- fm$coefficients["acc_decile1"] - fm$coefficients["acc_decile10"]
+p_val <- linearHypothesis(fm, "acc_decile1 = acc_decile10")$`Pr(>F)`[2]
+```
+
+### Discussion questions
+
+1. In estimating the hedge portfolio regression, we included a line `summarize(size_adj_ret = mean(size_adj_ret))`.
+Why is this step important?
+2. @Green:2011wu say "The simplicity of the accruals strategy and the size of the returns it generates have led some scholars to conclude that the anomaly is illusory. For example, Khan (2008) and Wu et al. (2010) argue that the anomaly can be explained by a mis-specified risk model and the q-theory of time-varying discount rates, respectively; Desai et al. (2004) conclude that the anomaly is deceptive because it is subsumed by a different strategy; Kraft et al. (2006) attribute it to outliers and look-ahead biases; Ng (2005) proposes that the anomaly’s abnormal returns are compensation for high exposure to bankruptcy risk; and Zach (2006) argues that there are firm characteristics correlated with accruals that cause the return pattern."
+Looking at @Sloan:1996wd, but without necessarily looking at each of the papers above, what evidence in @Sloan:1996wd seems inconsistent with the claims made by each paper above? Which do you think you would need to look more closely at the paper to understand? 
+What evidence do you think Zach (2006) would need to provide to support the claim of an alternative "cause"?
+3. Do @Green:2011wu address the alternative explanations advanced in the quote in Q1 above? 
+Do you think that they need to do so?
+4. How persuasive do you find the evidence regarding the role of hedge funds in @Green:2011wu?
+5. @Xie:2001th (p. 360) says that "for firm-years prior to 1988 when Compustat item #308 is unavailable, I estimate $\textit{CFO}_t$ as follows ...". 
+Why would item #308 be unavailable prior to 1988? 
+What is the equivalent to #308 in Compustat today? 
+6. Study the empirical model on p. 361 of @Xie:2001th, which is labelled equation (1). 
+(This is the much-used "Jones model" from @Jones:1991vx.)
+What are the assumptions implicit in this model and the labelling of the residual as "abnormal accruals"?
+(Hint: Take each component of the model and identify circumstances where it would be a reasonable model of "normal" accruals.)
+7.	What is "channel stuffing"? 
+(Hint: Wikipedia has a decent entry on this.) 
+What effect would channel stuffing have on abnormal accruals? 
+(Hint: Think about this conceptually and with regard to equation (1). 
+Do you need more information than is provided in @Xie:2001th to answer this?)
