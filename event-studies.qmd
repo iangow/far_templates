@@ -57,8 +57,8 @@ apple_permno <-
 apple_rets <-
   dsf %>%
   inner_join(dsi, by = "date") %>%
-  mutate(mkt_ret = ret - vwretd) %>%
-  select(permno, date, ret, mkt_ret, vol) %>%
+  mutate(ret_mkt = ret - vwretd) %>%
+  select(permno, date, ret, ret_mkt, vol) %>%
   filter(permno == apple_permno,
          date >= "2005-01-01") %>%
   collect()
@@ -75,7 +75,7 @@ apple_reg_data <-
   left_join(apple_event_dates, 
             join_by(permno, date >= start_date, date <= end_date)) %>%
   mutate(is_event = !is.na(start_date)) %>%
-  select(permno, date, ret, mkt_ret, vol, is_event)
+  select(permno, date, ret, ret_mkt, vol, is_event)
 ```
 
 ```{r}
