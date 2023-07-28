@@ -37,4 +37,12 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Accruals](https://raw.githubusercontent.com/iangow/far_templates/main/accruals.qmd)
  - [Earnings management](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt.qmd)
 
+### Part III: Causal inference
+
+ - [Natural experiments](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd)
+ - [Causal mechanisms](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd)
+ 
+
+### Part IV: Other topics
+
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)

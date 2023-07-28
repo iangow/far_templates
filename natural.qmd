@@ -1,0 +1,77 @@
+---
+title: "Exercise template for 'Natural experiments'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| message: false
+library(farr)
+library(ggplot2)
+library(dplyr, warn.conflicts = FALSE)
+```
+
+```{r}
+michels_2017 |> 
+  mutate(days_to_filing = as.integer(date_filed - eventdate)) |>
+  ggplot(aes(x = days_to_filing, fill = recognize)) + 
+  geom_histogram(binwidth = 1) 
+```
+
+```{r}
+michels_2017 |> 
+  mutate(days_to_period_end = as.integer(next_period_end - eventdate)) |>
+  ggplot(aes(x = days_to_period_end, fill = recognize)) + 
+  geom_histogram(binwidth = 1)
+```
+
+```{r}
+michels_2017 |> 
+  count(eventdate) |>
+  arrange(desc(n)) |>
+  top_n(5)
+```
+
+```{r}
+#| include: false
+top5 <-
+  michels_2017 |> 
+  count(eventdate) |>
+  arrange(desc(n)) |>
+  top_n(5) |>
+  pull() |>
+  sum()
+```
+
+## Discussion questions
+
+1. One assumption in @Michels:2017uc is that whether a natural disaster occurs before or after the balance sheet date of the next filing is random.
+Do the inherent properties of natural disasters ensure that they are random?
+Why?
+If not, how would you evaluate the randomness of natural disasters in the sample of @Michels:2017uc?
+Do the analyses above help this evaluation?
+2. Describe what you imagine to be the process from the occurrence of a natural disaster to reporting on that event in the subsequent filing? Do you think this process differs for recognized versus disclosed events?
+3. From the analysis, above it appears that five natural disasters account for `r top5` observations. 
+A simple Google search for each date and the word "disaster" reveals that these events are Hurricane Katrina (`2005-08-29`), Hurricane Ike (`2008-09-13`), Hurricane Ivan (`2004-09-16`), Hurricane Charley (`2004-08-13`), and Hurricane Wilma (`2005-10-24`).
+Is it problematic that a small number of disasters accounts for a significant portion of the sample?
+3. Where does @Michels:2017uc get data on natural disasters from?
+Is there anything that is problematic about this data source?
+Would it be possible to use another approach to data collection?
+What challenges would that approach face?
+4. A recurring question in accounting is whether it matters whether information is disclosed or recognized? 
+One view is that, if markets are efficient, it should not matter where the information is disclosed, so recognition should not matter relative to disclosure.
+What assumptions underlie this view?
+Are there any reasons to believe that they do or do not hold in the setting of @Michels:2017uc?
+What are the implications for the ability of @Michels:2017uc to deliver clean causal inferences?
+Nevertheless, even in this relatively straightforward setting, @Michels:2017uc recognizes the possibility of different materiality criteria for disclosed and recognized events, which could affect the relation been underlying events and observed disclosures. 
+@Michels:2017uc takes care to address this concern.
+5. What causal inferences does @Michels:2017uc draw?
+What (if any) issues do you see with regard to these?
+6. Choose a paper that you have seen recently that uses empirical analysis of non-experimental data.
+(If you cannot choose such a paper, you could use @Hopkins:2018tg, which was a seminar paper recently at the University of Melbourne.)
+Looking at the abstract of the paper can you determine whether this paper seeks to draw causal inferences?
+7. Choose what you think the authors regard to be the most important causal inference they draw (or would like to draw) in your chosen paper. 
+Which table or tables provide the relevant empirical analyses?
+Sketch a rough causal diagram for this causal inference using either discussion in the paper or your own background knowledge to identify important variables.
+How credible do you find the reported causal inferences to be in light of your causal diagram?
