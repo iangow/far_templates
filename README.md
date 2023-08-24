@@ -41,8 +41,8 @@ Each template below shares its name with the corresponding chapter in the [book]
 
  - [Natural experiments](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd)
  - [Causal mechanisms](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd)
+ - [Natural experiments revisited](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd)
  
-
 ### Part IV: Other topics
 
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)

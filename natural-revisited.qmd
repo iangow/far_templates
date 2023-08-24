@@ -34,6 +34,7 @@ Does the REP have relevance to papers without formal hypotheses?
 Does the absence of formal hypotheses imply that @Hail:2018wo were not testing hypotheses?
 Is your answer to the last question consistent with how @Hail:2018wo [p. 650] discuss results reported in Table 5 of that paper?
 
+
 3. According the analysis of @Bloomfield:2018va, there were 218 tests of 30 hypotheses and different hypotheses had different numbers of tests.
 In the following analysis, we assume 30 hypotheses with each having 7 tests (for a total of 210 tests).
 
@@ -50,12 +51,14 @@ results |>
   summarize(reject_one = any(reject), .groups = "drop") |>
   count(reject_one)
 ```
+
 </ul>
 <ul>
 Does this analysis suggest an alternative possible interpretation of the results than the "far less strongly than is typical" conclusion offered by @Bloomfield:2018va.
 Does choosing a different value for `set.seed()` alter the tenor of the results from the analysis above?
 How might you make the analysis above more definitive?
 </ul>
+
 
 4. @Bloomfield:2018va [p.326] argue "it is easy to imagine revisions of several conference papers would allow them to report results of strength comparable to those found in most papers published under TEP."
 For example, "@Li:2018vh yielded no statistically significant support for their main hypotheses.
@@ -84,6 +87,7 @@ Do you agree that the REP shuts down this channel?
 ### The SHO pilot sample {#sec-sho-pilot}
 
 ```{r}
+#| include: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 rs <- dbExecute(pg, "SET search_path TO crsp")
 
@@ -95,149 +99,7 @@ ccmxpf_lnkhist <- tbl(pg, "ccmxpf_lnkhist")
 ```
 
 ```{r}
-regex <- "^(.*)\\.([AB])$"
-
-clean_ticker <- function(x) {
-  case_when(nchar(x) == 5 & substr(x, 5, 5) == "E" ~ substr(x, 1, 4),
-            str_detect(x, regex) ~ str_replace(x, regex, "\\1"),
-            TRUE ~ x)
-}
-
-get_shrcls <- function(x) {
-  str_match(x, regex)[, 3]
-}
-
-sho_r3000_tickers <-
-  sho_r3000 |>
-  select(russell_ticker, russell_name) |>
-  mutate(ticker = clean_ticker(russell_ticker),
-         shrcls = get_shrcls(russell_ticker))
-```
-
-```{r}
-crsp_sample <-
-  stocknames |>
-  mutate(test_date = as.Date("2004-06-25")) |>
-  filter(test_date >= namedt, test_date <= nameenddt) |>
-  select(permno, permco, ticker, shrcls) |>
-  distinct() |>
-  collect()
-
-sho_r3000_merged <-
-  sho_r3000_tickers |>
-  inner_join(crsp_sample, by = "ticker", suffix = c("", "_crsp")) |>
-  filter(shrcls == shrcls_crsp | is.na(shrcls)) |>
-  select(russell_ticker, permco, permno)
-```
-
-```{r}
-trading_vol <-
-  msf |>
-  filter(date == "2004-06-30") |> 
-  mutate(dollar_vol = coalesce(abs(prc) * vol, 0)) |> 
-  select(permno, dollar_vol) |>
-  collect()
-
-sho_r3000_merged <-
-  sho_r3000_tickers |>
-  inner_join(crsp_sample, by = "ticker", suffix = c("", "_crsp")) |>
-  filter(is.na(shrcls) | shrcls == shrcls_crsp) |>
-  inner_join(trading_vol, by = "permno") |>
-  group_by(russell_ticker) |>
-  filter(dollar_vol == max(dollar_vol, na.rm = TRUE)) |>
-  ungroup() |>
-  select(russell_ticker, permno)
-```
-
-```{r}
-nmsind_data <-
-  mse |> 
-  filter(date <= "2004-06-28", event == "NASDIN") |>
-  group_by(permno) |>
-  filter(date == max(date, na.rm = TRUE)) |>
-  ungroup() |>
-  select(permno, date, nmsind) |>
-  collect()
-```
-
-```{r}
-exchcd_data <-
-  stocknames |>
-  filter(exchcd > 0) |>
-  mutate(test_date = as.Date("2004-06-28")) |>
-  filter(test_date >= namedt, test_date <= nameenddt) |>
-  select(permno, exchcd) |>
-  distinct() |>
-  collect()
-```
-
-```{r}
-ipo_dates <-
-  dseexchdates |> 
-  select(permno, begexchdate) |> 
-  distinct() |>
-  collect()
-```
-
-```{r}
-recent_delistings <-
-  mse |>
-  filter(event == "DELIST", 
-         date >= "2004-06-25", date <= "2004-06-28") |>
-  rename(delist_date = date) |>
-  select(permno, delist_date) |>
-  collect()
-```
-
-```{r}
-sho_r3000_permno <-
-  sho_r3000_merged |>
-  left_join(nmsind_data, by = "permno") |>
-  left_join(exchcd_data, by = "permno") |>
-  left_join(ipo_dates, by = "permno") |>
-  left_join(recent_delistings, by = "permno") |>
-  mutate(nasdaq_small = coalesce(nmsind == 3 & exchcd == 3, FALSE), 
-         recent_listing = begexchdate > "2004-04-30",
-         delisted = !is.na(delist_date),
-         keep = !nasdaq_small & !recent_listing & !delisted)
-```
-
-```{r}
-sho_r3000_sample <-
-  sho_r3000_permno |>
-  filter(keep) |>
-  rename(ticker = russell_ticker) |>
-  left_join(
-    sho_tickers |>
-      select(ticker) |>
-      mutate(pilot = TRUE), by = "ticker") |>
-  mutate(pilot = coalesce(pilot, FALSE)) |>
-  select(ticker, permno, pilot)
-```
-
-```{r}
-#| label: ccm_link
-ccm_link <-
-  ccmxpf_lnkhist |>
-  filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) |>
-  rename(permno = lpermno) |>
-  select(gvkey, permno, linkdt, linkenddt)
-
-gvkeys <-
-  ccm_link |>
-  mutate(test_date = as.Date("2004-06-28")) |>
-  filter(test_date >= linkdt, 
-         test_date <= linkenddt | is.na(linkenddt)) |>
-  select(gvkey, permno) |>
-  collect()
-
-sho_r3000_gvkeys <-
-  sho_r3000_sample |>
-  inner_join(gvkeys, by = "permno")
-```
-
-```{r}
+#| include: false
 #| cache: true
 sho_data <- 
   fhk_pilot |>
@@ -334,201 +196,9 @@ What challenges would such a process face?
 
 ## Analysing natural experiments {#sec-analyse-natural}
 
-
-```{r}
-#| label: get_outcomes
-#| cache: true
-get_outcomes <- function(rho = 0, periods = 7) {
-  e <- rnorm(periods)
-  y <- rep(NA, periods)
-  y[1] <- e[1]
-  for (i in 2:periods) {
-    y[i] <- rho * y[i - 1] + e[i]
-  }
-  tibble(t = 1:periods, y = y)
-}
-```
-
-```{r}
-#| label: get_sample
-#| cache: true
-#| dependson: get_outcomes
-get_sample <- function(n = 100, rho = 0, periods = 7, effect = 0) {
-  treat <- sample(1:n, size = floor(n/2), replace = FALSE)
-  
-  t_effects <- tibble(t = 1:periods, t_effect = rnorm(periods))
-  
-  f <- function(x) tibble(id = x, get_outcomes(rho = rho, 
-                                               periods = periods))
-  df <- 
-    lapply(1:n, f) |>
-    bind_rows() |> 
-    inner_join(t_effects, by = "t") |>
-    mutate(treat = id %in% treat,
-           post = t > periods/2,
-           y = y + if_else(treat & post, effect, 0) + t_effect) |>
-    select(-t_effect)
-}
-```
-
-```{r}
-#| label: est_effect
-#| cache: true
-est_effect <- function(df) {
-  
-  df_treat <- df |> select(id, treat) |> distinct()
-  
-  fm_DiD <- lm(y ~ treat * post, data = df)
-  est_DiD <- fm_DiD$coefficients[["treatTRUE:postTRUE"]]
-  
-  df_POST <- 
-    df |> 
-    filter(post) |>
-    group_by(id, treat) |>
-    summarize(y = mean(y), .groups = "drop")
-    
-  fm_POST <- lm(y ~ treat, data = df_POST)
-  est_POST <- fm_POST$coefficients[["treatTRUE"]]
-  
-  df_CHANGE <- 
-    df |> 
-    group_by(id, treat, post) |>
-    summarize(y = mean(y), .groups = "drop") |>
-    pivot_wider(names_from = "post", values_from = "y") |>
-    rename(y_pre = `FALSE`,
-           y_post = `TRUE`) |>
-    mutate(y_change = y_post - y_pre) 
-  
-  fm_CHANGE <- lm(I(y_post - y_pre) ~ treat, data = df_CHANGE)
-  est_CHANGE <- fm_CHANGE$coefficients[["treatTRUE"]]
-  
-  fm_ANCOVA <- lm(y_post ~ y_pre + treat, data = df_CHANGE)
-  est_ANCOVA <- fm_ANCOVA$coefficients[["treatTRUE"]]
-  
-  tibble(est_DiD, est_POST, est_CHANGE, est_ANCOVA)
-}
-```
-
-```{r}
-#| label: run_sim
-#| cache: true
-#| dependson: get_sample est_effect
-run_sim <- function(i, n = 100, rho = 0, periods = 7, effect = 0) {
-  df <- get_sample(n = n, rho = rho, periods = periods, effect = effect)
-  tibble(i = i, est_effect(df))
-}
-```
-
-```{r}
-#| label: params
-#| cache: true
-#| include: false
-rhos <- seq(from = 0, to = 0.9, length.out = 6) 
-effects <- seq(from = 0, to = 1, length.out = 5)
-params <- expand.grid(effect = effects, rho = rhos)
-```
-
-```{r}
-#| ref-label: params
-#| eval: false
-```
-
-```{r}
-#| label: run_sim_n
-#| cache: true
-#| dependson: run_sim
-run_sim_n <- function(effect, rho) {
-  n_sims <- 1000
-  set.seed(2021)
-  tibble(effect, rho, bind_rows(lapply(1:n_sims, run_sim, 
-                                       rho = rho, effect = effect)))
-}
-```
-
-```{r}
-#| eval: false
-#| include: true
-results <- bind_rows(Map(run_sim_n, 
-                         effect = params$effect, rho = params$rho))
-```
-
-```{r}
-#| label: results
-#| eval: true
-#| include: false
-#| cache: true
-#| dependson: params, run_sim_n
-library(parallel)
-results <- bind_rows(mcMap(run_sim_n, effect = params$effect, 
-                           rho = params$rho,
-                           mc.cores = 8))
-```
-
 ## Evaluating natural experiments
 
 ## The parallel trends assumption {#sec-parallel-trends}
-
-```{r}
-#| label: spreads
-#| cache: true
-pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-
-dsf <- tbl(pg, sql("SELECT * FROM crsp.dsf"))
-
-spreads <-
-  dsf |>
-  mutate(spread = 100 * (ask - bid)/((ask + bid)/2),
-         quarter = as.Date(date_trunc('quarter', date))) |>
-  group_by(permno, quarter) |>
-  summarize(spread = mean(spread, na.rm = TRUE), .groups = "drop") |>
-  mutate(post = quarter >= "2004-01-01") |>
-  filter(!is.na(spread), 
-         between(quarter, "2000-01-01", "2008-01-01")) |>
-  collect()
-
-rs <- dbDisconnect(pg)
-```
-
-```{r}
-#| cache: true
-#| dependson: spreads
-set.seed(2021) 
-treatment <-
-  spreads |>
-  filter(!post) |>
-  group_by(permno) |>
-  summarize(spread = mean(spread, na.rm = TRUE), .groups = "drop") |>
-  mutate(treat_prob = if_else(spread > median(spread), 0.55, 0.45),
-         rand = runif(n = nrow(pick(everything()))),
-         treat = rand < treat_prob) |>
-  select(permno, treat)
-```
-
-```{r}
-reg_data <-
-  spreads |>
-  inner_join(treatment, by = "permno") 
-
-fm <- feols(spread ~ post * treat, vcov = ~ permno, data = reg_data)
-```
-
-```{r}
-#| output: asis
-#| label: tbl-placebo
-#| tbl-cap: Test of parallel trends in bid-ask spreads
-#| cap-location: margin
-modelsummary(fm,
-             estimate = "{estimate}{stars}",
-             gof_map = c("nobs"),
-             stars = c('*' = .1, '**' = 0.05, '***' = .01))
-```
-
-```{r}
-#| include: false
-coef <- fm$coefficients["postTRUE:treatTRUE"][1]
-se <- se(fm)["postTRUE:treatTRUE"][1]
-tval <- coef/se
-```
 
 ## Indirect effects of Reg SHO {#sec-sho-indirect}
 
@@ -539,6 +209,7 @@ tval <- coef/se
 ```{r}
 #| label: pg_data
 #| cache: true
+#| include: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
 funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
@@ -554,12 +225,7 @@ compustat_annual <-
   collect()
 
 rs <- dbDisconnect(pg)
-```
 
-```{r}
-#| label: controls
-#| dependson: pg_data
-#| cache: true
 controls_raw <-
   compustat_annual |>
   group_by(gvkey) |>
@@ -595,12 +261,7 @@ df_controls <-
          leverage = coalesce(leverage, leverage_avg),
          roa = coalesce(roa, roa_avg)) |>
   select(gvkey, fyear, at, mtob, leverage, roa)
-```
 
-```{r}
-#| label: ff_data
-#| cache: true
-#| message: false
 ff_data_raw <- get_ff_ind(48)
 
 get_ff_data <- function() {
@@ -610,11 +271,7 @@ get_ff_data <- function() {
     unnest(sich) |> 
     select(ff_ind, sich)
 }
-```
 
-```{r}
-#| label: get_das
-#| cache: true
 get_das <- function(compustat, drop_extreme = TRUE) {
   
   ff_data <- get_ff_data()
@@ -659,11 +316,7 @@ get_das <- function(compustat, drop_extreme = TRUE) {
            da = acc_at - nda) |>
     select(gvkey, fyear, ff_ind, acc_at, da) 
 }
-```
 
-```{r}
-#| label: get_pm
-#| cache: true
 get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
   
   das <- get_das(compustat, drop_extreme = drop_extreme)
@@ -682,7 +335,8 @@ get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
   perf_match <-
     perf |>
     inner_join(perf, by = c("fyear", "ff_ind"),
-               suffix = c("", "_other")) |>
+               suffix = c("", "_other"),
+               relationship = "many-to-many") |>
     filter(gvkey != gvkey_other) |>
     mutate(perf_diff = abs(ib_at - ib_at_other)) |>
     group_by(gvkey, fyear) |>
@@ -702,12 +356,7 @@ get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
     mutate(da_adj = da - da_other) |>
     select(gvkey, fyear, acc_at, da, da_adj, da_other, gvkey_other)
 }
-```
 
-```{r}
-#| label: get_pmdas
-#| cache: true
-#| dependson: get_das, get_pm
 get_pmdas <- function(compustat, pm_lag = TRUE, drop_extreme = TRUE) {
   
   get_pm(compustat, 
@@ -717,20 +366,9 @@ get_pmdas <- function(compustat, pm_lag = TRUE, drop_extreme = TRUE) {
     filter(row_number() == 1) |>
     ungroup() 
 }
-```
 
-```{r}
-#| label: pmdas
-#| dependson: get_pmdas, pg_data
-#| warning: false
-#| cache: true
 pmdas <- get_pmdas(compustat_annual)
-```
 
-```{r}
-#| label: sho_data
-#| cache: true
-#| warning: false
 sho_data <- 
   fhk_pilot |>
   select(gvkey, pilot) |>
@@ -739,12 +377,7 @@ sho_data <-
   filter(n() == 1) |>
   ungroup() |>
   inner_join(fhk_pilot, by = c("gvkey", "pilot")) 
-```
 
-```{r}
-#| label: sho_accruals
-#| dependson: pmdas, controls, sho_data
-#| cache: true
 win_vars <- c("at", "mtob", "leverage", "roa", "da_adj", "acc_at")
 
 sho_accruals <-
@@ -765,11 +398,11 @@ sho_accruals <-
 ### Discussion questions
 
 1. What are these lines doing in the code creating `ff_data`? 
+
 <ul>
-```{r}
-#| eval: false
-  mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
-  unnest(sich) |> 
+```{r, eval=FALSE}
+mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
+unnest(sich) |> 
 ```
 </ul>
 
@@ -792,6 +425,7 @@ If not, how might you ensure this and does this cause problems? (Just describe t
 ```{r}
 #| label: reg_functions
 #| cache: true
+#| include: false
 controls_list <- c("log(at)", "mtob", "roa", "leverage")
 
 reg_year_fe <- function(df, dv = "da_adj",
@@ -819,9 +453,8 @@ reg_year_fe <- function(df, dv = "da_adj",
 }
 ```
 
-To facilitate the output of variations, we next make a function that runs regressions with and without controls and with and without firm fixed effects and returns a nicely formatted regression table.
-
 ```{r}
+#| include: false
 make_reg_table <- function(df, dv = "da_adj", cl_2 = TRUE) {
   omit <- paste0("^(", paste(gsub("[()]", ".", 
                                   c("during", "post", controls_list)), 
@@ -844,7 +477,15 @@ make_reg_table <- function(df, dv = "da_adj", cl_2 = TRUE) {
 ```
 
 ```{r}
+#| label: tbl-baseline
+#| output: asis
+#| tbl-cap: Baseline replication of FHK
+make_reg_table(sho_accruals)
+```
+
+```{r}
 #| label: plot_coefficients
+#| include: false
 plot_coefficients <- function(model, title = "") {
   tibble(name = names(model$coefficients),
          value = as.vector(model$coefficients)) |>
@@ -867,6 +508,7 @@ plot_coefficients <- function(model, title = "") {
 #| fig-width: 10
 #| warning: false
 #| message: false
+#| echo: false
 sho_accruals |>
   mutate(year = as.factor(year(datadate))) |>
   feols(da_adj ~ year * pilot - pilot - 1  + 
@@ -879,9 +521,7 @@ sho_accruals |>
 1. In words, how does `sho_accruals_alt` (defined below) differ from `sho_accruals`?
 Does using `sho_accruals_alt` in place of `sho_accruals` affect the regression results?
 
-<ul>
 ```{r}
-#| eval: false
 firm_years <-
   controls_raw |>
   select(gvkey, datadate, fyear)
@@ -890,12 +530,11 @@ sho_accruals_alt <-
   sho_r3000_gvkeys |>
   inner_join(firm_years, by = "gvkey") |>
   left_join(df_controls, by = c("gvkey", "fyear")) |>
-  left_join(pdmas, by = c("gvkey", "fyear")) |>
+  left_join(pmdas, by = c("gvkey", "fyear")) |>
   group_by(fyear) |>
-  mutate(across(all_of(win_vars), winsorize, prob = 0.01)) |>
+  mutate(across(all_of(win_vars), \(x) winsorize(x, prob = 0.01))) |>
   ungroup()
 ```
-</ul>
 
 2. In an online appendix BDLYY say "FHK winsorize covariates for their covariate balance table at 1/99%. We inferred that they also winsorized accruals at this level. Whether they winsorize across sample years or within each year, they do not specify."
 The code above winsorized within each year.
@@ -924,6 +563,7 @@ Does doing this make a difference?
 Does this suggest any issues with the code `post = year %in% c(2008, 2009, 2010)` above?
 If so, does fixing any issue have an impact on the results reported above?
 
+
 9. Would it make sense, in creating `perf` above, if we instead calculated `ib_at` as `if_else(at > 0, ib/at, NA_real_))`?
 What is the effect on the regression results if we use this modified calculation of `ib_at`?
 What do @Kothari:2005aa recommend on this point?
@@ -945,6 +585,7 @@ What happens if the `filter` on `abs(acc_at) <= 1` is removed from the code abov
 #| label: get_coef_rand
 #| cache: true
 #| dependson: sho_accruals, reg_functions
+#| include: false
 get_coef_rand <- function(i) {
   treatment <-
     sho_accruals |>
@@ -969,6 +610,7 @@ get_coef_rand <- function(i) {
 
 ```{r}
 #| eval: false 
+#| include: false
 set.seed(2021)
 rand_results <- bind_rows(lapply(1:1000, get_coef_rand))
 ```
@@ -979,6 +621,7 @@ rand_results <- bind_rows(lapply(1:1000, get_coef_rand))
 #| echo: false
 #| warning: false
 #| dependson: sho_accruals, get_coef_rand
+#| include: false
 library(parallel)
 set.seed(2021)
 rand_results <- bind_rows(mclapply(1:1000, get_coef_rand, mc.cores = 8))
@@ -988,6 +631,7 @@ rand_results <- bind_rows(mclapply(1:1000, get_coef_rand, mc.cores = 8))
 #| cache: true
 #| warning: false
 #| dependson: sho_accruals, reg_functions, rand_results
+#| include: false
 fms <- list()
 fms[[1]] <- reg_year_fe(sho_accruals, cl_2 = TRUE)
 fms[[2]] <- reg_year_fe(sho_accruals, cl_2 = FALSE)
@@ -1007,7 +651,7 @@ vcovs[[3]] <- vcov
 ```{r}
 #| label: tbl-rand-inf
 #| warning: false
-#| echo: true
+#| echo: false
 #| output: asis
 #| tbl-cap: Results with randomization inference
 modelsummary(fms, vcov = vcovs, 
@@ -1087,3 +731,5 @@ Explain your reasoning given the various issues raised in this chapter.
 
 2. Do you believe the issues raised by @Chen:2018wh with regard to two-step procedures also apply if using randomization inference?
 Why or why not?
+
+## References {-}
