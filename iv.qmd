@@ -1,0 +1,164 @@
+---
+title: "Exercise template for 'Instrumental variables '"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| label: setup
+#| include: true
+#| cache: false
+#| echo: true
+#| message: false
+library(dplyr, warn.conflicts = FALSE)
+library(AER)        # For ivreg()
+library(modelsummary)
+```
+
+## Discussion questions
+
+You might find [this template](templates/iv_template.Rmd) helpful for answering the following questions.
+
+1. In the 1960s and early 1970s, American men were at risk of being drafted for military service. 
+Each year from 1970 to 1972, draft eligibility was prioritized based on the results of a lottery over birthdays. 
+A random number was assigned to the birthdays of 19-year-olds. 
+Those whose birthday was associated with a random number below the cut-off were draft-eligible; the other 19-year-olds were not draft-eligible. 
+@Angrist:2008vk point out that, "in practice, many draft-eligible men were still exempted from service for health or other reasons, while many men who were draft-exempt nevertheless volunteered for service."
+Using an indicator for draft lottery number being below the cut-off as an instrumental variable, @Angrist:1990dk finds that those who served in Vietnam earned significantly less than their peers even in 1981. 
+Try to draw the causal diagram for this analysis and apply the three questions outlined above to this setting. 
+What assumptions are needed for the answer to each question to be "yes"? 
+How might these assumptions be violated?
+2.	@Ahern:2012kca study a rule requiring firms in Norway to appoint female directors "use the pre-quota cross-sectional variation in female board representation to instrument for exogenous changes to corporate boards following the quota."
+What is the role of the discussion on p.145 suggesting that "the quota was implemented without the consent of business leaders"?
+What about the discussion on p.155 suggesting that the rule was not anticipated?
+3.	You and a co-author are interested in studying the effect of independent directors on financial reporting quality. 
+You conjecture that independent directors demand better financial reporting, as they are less likely to benefit from obfuscation of performance than non-independent directors, who are often employees of the firm. 
+However, you are concerned that causation may run in the opposite direction; firms with better financial reporting quality may have more independent directors on their boards. 
+Provide some arguments for the existence of reverse causation. 
+How persuasive do you find these arguments?
+4. In response to a request by the SEC in February 2002, the major US exchanges (NYSE and Nasdaq) proposed changes to listing standards that would require firms to have a majority of independent directors. 
+In 2003, the SEC approved these changes and required that firms comply by the earlier of (i) the first annual shareholder meeting after January 15, 2004 and (ii) October 31, 2004. 
+Your co-author argues that this change was "exogenous", as it was not driven by the decisions of individual firms, and this fact allows you to estimate a causal effect.
+  - Does "exogeneity" as used by your co-author mean the same thing as exogeneity for the purposes of econometric  analysis? 
+  Does the former notion imply the latter? 
+  Think of "examples" to support your arguments (examples could include a simple model, a numerical argument, or purely verbal descriptions of real or imagined scenarios).
+  - More specifically, your co-author argues that the change in the number of independent directors imposed on the firm by the new rules is exogenous and thus could be used as an instrument for your study.
+  @Armstrong:2014aa examine the changes in listing standards above and use "the minimum required percentage change in independent directors, `Min % change ID`, as an instrument" in studying the effect of independent directors on firm transparency. 
+  What are the parallels between the setting of @Armstrong:2014aa and that of Ahern and Dittmar (2016)? 
+  Do the two papers use the same basic approach, or are there important differences between their approaches?
+
+5. Suppose the existence of a world of Sneetches.^[The interested reader can learn more about Sneetches in Dr Seuss's *The Sneetches and Other Stories*, available on [Amazon](https://www.amazon.com/dp/0394800893) and elsewhere.]
+There are two kinds of Sneetches: 
+<ul>
+> Now, the Star-Belly Sneetches  
+> Had bellies with stars.  
+> The Plain-Belly Sneetches  
+> Had none upon thars.
+</ul>
+
+<ul>
+```{r}
+#| label: params
+#| include: false
+#| messages: false
+max_d <- 10
+n <- 10000
+set.seed(1) 
+z <- rlnorm(n)
+gamma <- 3
+a <- 1
+b <- gamma * z
+```
+In the Sneetch world,  there are `r sprintf('%d', n)` (`n`) firms all boards of directors have `r max_d` (`max_d`) directors.
+The number of Plain-Belly directors is determined by firms to maximize the function
+$$v(x) = -a x^2 + b x $$
+where $a = `r a`$ and $b = \gamma z$, $\gamma = `r gamma`$ and $z$ is log-normally distributed with default parameters of $\mu=0$ and $\sigma=1$.
+Here is the code for these parameters:
+```{r}
+#| ref-label: params
+#| eval: false
+```
+  a. Expressed in terms of $a$ and $b$, what value of $x$ maximizes $v(x)$? 
+  What issue do we have in using this maximum to selected the number of Plain-Belly directors on a board?
+  What does the function below do?
+  Does it address the issue associated with simply maximizing $v(x)$
+
+<ul>
+```{r}
+d_opt_fun <- function(a, b, min_d = 0) {
+  
+  v <- function(x) {
+    -a * x^2 + b * x 
+  }
+  
+  opts <- min_d:max_d
+  vals <- sapply(opts, v)
+  d_opt <- opts[vals==max(vals)]
+  d_opt
+}
+```
+</ul>
+
+```{r}
+#| label: val_fun
+#| include: false
+sd_epsilon <- 5
+alpha <- 100
+beta <- 10
+
+d_opt_fun <- Vectorize(d_opt_fun)
+
+df <-
+  tibble(a, b) |>
+  mutate(epsilon_0 = rnorm(n, sd=sd_epsilon),
+         V_0 = alpha + beta * b + epsilon_0) |>
+  mutate(d_0 = d_opt_fun(a, b))
+```
+
+Suppose that the value of firm $i$ at time $t=0$ is given by the equation:
+
+$$ V_{i0} = \alpha + \beta \times b_i + \epsilon_0 $$
+where $\alpha = `r alpha`$, $\beta = `r beta`$ and $\epsilon \sim N(0, \sigma_{\epsilon})$, where $\sigma_{\epsilon} = `r sd_epsilon`$.
+The following code implements this value function and calculates the value of firms at time $t=0$ 
+The following code generates the value (`V_0`) and the number of Plain-Belly directors (`d_0`) for each of the `r prettyNum(n, big.mark = ",")` firms at time $t=0$ assuming that each firm chooses the number of Plain-Belly directors to maximize $v$.
+
+<ul>
+```{r}
+#| ref-label: val_fun
+#| eval: false
+```
+</ul>
+<ul>
+Now, suppose that the Sneetches pass legislation requiring every board to have at least three Plain-Belly directors at time $t=1$.
+The value of the firm $i$ at time $t=1$ is given by the equation:
+$$ V_{i1} = \alpha + \beta \times b_i + \epsilon_{i1} $$
+The following code implements this.
+</ul>
+
+<ul>
+```{r}
+min_d <- 3
+df_1 <-
+  df |>
+  mutate(epsilon_1 = rnorm(n, sd = sd_epsilon),
+         V_1 = alpha + beta * b + epsilon_1,
+         d_1 = d_opt_fun(a, b, min_d = min_d))
+```
+</ul>
+Note that the code adds data for $t=1$ to the $t=0$ values from above and that the maximization of $v$ is subject to the constraint that $x \geq `r min_d`$.
+
+  b. Using OLS, estimate the relationship between firm value at time $t=1$ ($V_1$) and the number of Plain-Belly directors on the board ($d_1$).
+  c. Estimate an IV regression using the strategy of @Ahern:2012kca.
+  d. Estimate an IV regression using the strategy of @Armstrong:2014aa (note that rather than `Min % change X` you might use something like `Min change X`, as the denominator is `r max_d` for all observations). *Hint*: The `pmin` function in R gives the point-wise minimum of two vectors of values (e.g., `pmin(x, y)` will return the lower of $x$ and $y$ for each pair.)
+  e. What is the true causal effect of Plain-Belly directors on firm value? Do the strategies of either @Ahern:2012kca or @Armstrong:2014aa correctly estimate this effect?
+
+6. The objective of @Cohen:2013uc "is to investigate how governance regulations in SOX and the exchanges are associated with chief executive officers' incentives and risk-taking behavior." 
+What is the treatment of interest in @Cohen:2013uc? 
+What are the outcomes of interest?
+@Cohen:2013uc state that "our dependent variables, namely, investment and executive incentive compensation, are likely to be determined jointly.
+As such, the parameter estimates from ordinary least squares (OLS) are likely to be biased. 
+Our empirical analyses address the issue by using simultaneous equations models." 
+Looking at Panel A of Table 4, what "exclusion restrictions" are assumed? 
+What does the implied causal diagram look like? 
+How persuasive do you find the empirical approach of @Cohen:2013uc to be?

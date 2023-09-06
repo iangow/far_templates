@@ -42,6 +42,7 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Natural experiments](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd)
  - [Causal mechanisms](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd)
  - [Natural experiments revisited](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd)
+ - [Instrumental variables](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)
  
 ### Part IV: Other topics
 
