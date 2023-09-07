@@ -74,11 +74,7 @@ In the Sneetch world,  there are `r sprintf('%d', n)` (`n`) firms all boards of 
 The number of Plain-Belly directors is determined by firms to maximize the function
 $$v(x) = -a x^2 + b x $$
 where $a = `r a`$ and $b = \gamma z$, $\gamma = `r gamma`$ and $z$ is log-normally distributed with default parameters of $\mu=0$ and $\sigma=1$.
-Here is the code for these parameters:
-```{r}
-#| ref-label: params
-#| eval: false
-```
+
   a. Expressed in terms of $a$ and $b$, what value of $x$ maximizes $v(x)$? 
   What issue do we have in using this maximum to selected the number of Plain-Belly directors on a board?
   What does the function below do?
