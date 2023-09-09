@@ -670,9 +670,9 @@ Why did we do it this way rather than simply applying the line `mutate(pilot = s
 (*Hint*: You should not need to run the randomization again; modifying the calculation of `p_value` should suffice.)
 
 3. What is the empirical standard error implied by the distribution of coefficients in `rand_results`?
-Is it closer to the standard errors obtained in estimating with `cl_2 = TRUE` or those with `cl_2 = FALSE`?
-Why might it be preferable to calculate $p$-values under randomization inference as we have done above instead of calculating $p$-values from $t$-statistics based on a the estimated coefficient and the empirical standard error?
-Would we get different $p$-values using this latter approach?
+Is it closer to the two-way cluster robust standard errors obtained in estimating with `cl_2 = TRUE` or with `cl_2 = FALSE`?
+Why might it be preferable to calculate $p$-values under randomisation inference using the empirical distribution of the test statistic, instead of calculating these from $t$-statistics based on the estimated coefficient and the empirical standard error?
+Would we get different $p$-values using the former approach?
 
 4. Why did we not use the empirical standard error implied by the distribution of coefficients in `rand_results` to calculate standard errors for the control variables (e.g., `log(at)`)?
 
