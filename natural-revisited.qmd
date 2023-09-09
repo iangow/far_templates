@@ -406,7 +406,7 @@ unnest(sich) |>
 ```
 </ul>
 
-2. What issue is `filter(row_number() == 1)` addressing in the creation `pm_disc_accruals_sorted`?
+2. What issue is `filter(row_number() == 1)` addressing in the code above?
 What assumptions are implicit in this approach?
 Do these assumptions hold in this case?
 What would be an alternative approach to address the issue?
