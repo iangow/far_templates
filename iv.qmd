@@ -143,6 +143,7 @@ df_1 <-
 ```
 </ul>
 Note that the code adds data for $t=1$ to the $t=0$ values from above and that the maximization of $v$ is subject to the constraint that $x \geq `r min_d`$.
+We assume that neither $a$ nor $b$ is observable to the researcher.
 
   b. Using OLS, estimate the relationship between firm value at time $t=1$ ($V_1$) and the number of Plain-Belly directors on the board ($d_1$).
   c. Estimate an IV regression using the strategy of @Ahern:2012kca.
