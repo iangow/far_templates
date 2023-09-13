@@ -1,0 +1,320 @@
+---
+title: "Exercise template for 'Panel data'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| warning: false
+#| message: false
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(farr)
+library(DBI)
+library(lubridate)
+library(fixest)
+library(modelsummary)
+library(ggplot2)
+```
+
+```{r}
+#| echo: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+seg_customer <- tbl(pg, sql("SELECT * FROM comp_segments_hist_daily.seg_customer"))
+names_seg <- tbl(pg, sql("SELECT * FROM comp_segments_hist_daily.names_seg"))
+funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
+```
+
+```{r}
+#| echo: false
+undisclosed_names <-
+  undisclosed_names |>
+  distinct()
+
+customers <-
+    seg_customer |>
+    filter(ctype == "COMPANY") |>
+    collect()
+
+disclosure_raw <-
+    customers |>
+    filter(between(datadate, as.Date("1994-01-01"), as.Date("2010-12-31"))) |>
+    left_join(undisclosed_names, by = "cnms") |>
+    mutate(disclosed = coalesce(disclosed, TRUE)) |>
+    select(gvkey, datadate, cnms, salecs, disclosed) 
+```
+
+```{r}
+#| label: fig-max-cust
+#| echo: false
+sales <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  select(gvkey, datadate, sale) |>
+  collect()
+```
+
+```{r}
+#| echo: false
+prin_cust_df <-
+  disclosure_raw |> 
+  inner_join(sales, by = c("gvkey", "datadate")) |>
+  group_by(gvkey, datadate) |> 
+  filter(!is.na(salecs), sale > 0) |>
+  summarize(prin_cust = max(salecs/sale, na.rm = TRUE), 
+            .groups = 'drop') |>
+  mutate(has_prin_cust = prin_cust >= 0.1)
+```
+
+```{r}
+#| echo: false
+disclosure <-
+    disclosure_raw |> 
+    inner_join(sales, by = c("gvkey", "datadate")) |>
+    semi_join(llz_2018, by = "gvkey") |>
+    group_by(gvkey, datadate) |>
+    summarize(ratio = mean(!disclosed),
+              ratio_sale = sum((!disclosed) * salecs)/sum(salecs),
+              .groups = "drop") |>
+    mutate(year = year(datadate)) 
+```
+
+```{r}
+#| include: false
+idd_periods <- get_idd_periods(min_date = "1994-01-01", max_date = "2010-12-31")
+```
+
+```{r}
+#| echo: false
+ciks <-
+  names_seg |>
+  filter(!is.na(cik)) |>
+  select(gvkey, cik) |>
+  collect()
+
+state_hq_linked <- 
+  state_hq |>
+  inner_join(ciks, by = "cik") |>
+  inner_join(disclosure, by = "gvkey", relationship = "many-to-many") |>
+  filter(datadate >= min_date, datadate <= max_date) |>
+  select(gvkey, datadate, ba_state) |>
+  rename(state = ba_state)
+```
+
+```{r}
+#| echo: false
+reg_data <-
+  disclosure |>
+  inner_join(prin_cust_df, by = c("gvkey", "datadate")) |>
+  filter(has_prin_cust) |>
+  inner_join(state_hq_linked, by = c("gvkey", "datadate")) |>
+  inner_join(idd_periods, 
+             join_by(state, datadate >= start_date, datadate <= end_date)) |>
+  filter(period_type != "Post-rejection") |>
+  mutate(post = period_type == "Post-adoption",
+         ln_ratio = log(1 + ratio),
+         ln_ratio_sale = log(1 + ratio_sale)) |>
+  select(-start_date, -end_date)
+```
+
+```{r}
+#| warning: false
+#| echo: false
+fms <- list()
+fms[[1]] <- feols(ln_ratio ~ post | gvkey + year, 
+                  data = reg_data, vcov = "iid")
+fms[[2]] <- feols(ln_ratio_sale ~ post | gvkey + year, 
+                  data = reg_data, vcov = "iid")
+```
+
+```{r}
+#| warning: false
+#| echo: false
+switchers <- 
+  reg_data |> 
+  distinct(gvkey, post) |> 
+  group_by(gvkey) |> 
+  filter(n() > 1) |>
+  select(gvkey) |>
+  distinct() |>
+  ungroup()
+
+reg_data_switchers <-
+  reg_data |>
+  semi_join(switchers, by = "gvkey") 
+
+fms[[3]] <- feols(ln_ratio ~ post | gvkey + year, 
+                  data = reg_data_switchers, vcov = "iid")
+fms[[4]] <- feols(ln_ratio_sale ~ post | gvkey + year, 
+                  data = reg_data_switchers, vcov = "iid")
+```
+
+```{r}
+#| label: tbl-table-2
+#| tbl-cap: Effect of IDD adoption
+#| output: asis
+#| echo: false
+modelsummary(fms, 
+             estimate = "{estimate}{stars}",
+             gof_map = c("nobs", "r.squared", "adj.r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+```{r}
+#| echo: false
+factor_t <- function(t) {
+  t <- relevel(as.factor(t), ref = "-1")
+  levels(t) <- gsub("^([0-9]+)", "+\\1", levels(t))
+  levels(t) <- gsub("([0-9]+)", " \\1", levels(t))
+  levels(t) <- gsub("^", " ", levels(t))
+  t
+}
+```
+
+```{r}
+#| echo: false
+year_diff <- function(t) {
+  t <- case_when(t < -5 ~ -5,
+                 t > 5 ~ 5,
+                 is.na(t) ~ -Inf,
+                 TRUE ~ t) 
+  factor_t(t)
+}
+```
+
+```{r}
+#| echo: false
+switch_years <-
+  reg_data |>
+  group_by(gvkey) |> 
+  arrange(datadate) |> 
+  filter(period_type == "Post-adoption" & 
+           lag(period_type) == "Pre-adoption") |>
+  group_by(gvkey) |>
+  summarize(adoption_year = min(year), .groups = "drop")
+
+reg_data_t <-
+  reg_data |>
+  left_join(switch_years, by = "gvkey") |>
+  mutate(t = year_diff(year - adoption_year))
+```
+
+```{r}
+#| warning: false
+#| echo: false
+fms <- list()
+fms[[1]] <- feols(ln_ratio ~ t | gvkey + year, 
+                  data = reg_data_t, vcov = "iid")
+fms[[2]] <- feols(ln_ratio_sale ~ t | gvkey + year,
+                  data = reg_data_t, vcov = "iid")
+fms[[3]] <- feols(ln_ratio ~ t | gvkey + year,
+                  data = subset(reg_data_t, !grepl("Inf", t)), vcov = "iid")
+fms[[4]] <- feols(ln_ratio_sale ~ t | gvkey + year, 
+                  data = subset(reg_data_t, !grepl("Inf", t)), vcov = "iid")
+```
+
+```{r}
+#| label: tbl-idd-by-year
+#| tbl-cap: Effect of IDD adoption by year
+#| output: asis
+#| echo: false
+modelsummary(fms, 
+             estimate = "{estimate}{stars}",
+             gof_map = c("nobs", "r.squared", "adj.r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+```{r}
+#| echo: false
+plot_coefs <- function(fm) {
+  
+  coefs <- 
+    tibble(t = names(coef(fm)),
+           value = coef(fm),
+           se = se(fm)) |>
+    mutate(t = as.integer(gsub("[t ]+", "", t))) |>
+    filter(t != -Inf)
+
+  ci <- 0.95
+  mult <- qnorm(1 - (1 - ci)/2)
+
+  plot <-
+    tibble(t = -1, value = 0, se = 0) |>
+    bind_rows(coefs) |>
+    mutate(mean = value,
+           top = value + mult * se,
+           bot = value - mult * se) |>
+    ggplot(aes(x = t, y = mean)) + 
+    geom_errorbar(aes(ymin = bot, ymax = top), width = .1) +
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(breaks = seq(from = min(coefs$t), 
+                                    to = max(coefs$t)))
+  
+  plot
+}
+```
+
+
+```{r}
+#| warning: false
+#| echo: false
+plot_coefs(fms[[1]])
+```
+
+### Discussion questions
+
+1. The proprietary cost hypothesis tested by @Li:2018tj posits that increased cost of disclosure will lead to reduced supply of disclosure?
+What rival theories exist that would make alternative predictions?
+Are there other elements of disclosure theory that might be tested?
+Why do you think  @Li:2018tj  focused on this specific element of the proprietary cost hypothesis?
+2. In the analysis above, we do not include the control variables considered by @Li:2018tj.
+For example, @Li:2018tj "include R&D expenditures to sales, advertisement [sic] expenditure to sales, and intangible assets scaled by total assets to control for a firm's proprietary costs of disclosure."
+Using the approach outlined [here](https://iangow.github.io/far_book/causal-inf.html), in what circumstances would it be necessary to control for "a firm's proprietary costs of disclosure" in this way?
+Do these circumstances seem applicable in this setting, where the treatment is a (presumably exogenous) shock to disclosure costs and the outcome is disclosure choices?
+3. What differs between the regressions reported in columns (1) and (3), and (2) and (4) of @tbl-table-2, respectively?
+What does this tell you about what drives the regression results in this setting?
+What happens if you omit the year fixed effects from both sets of regressions?
+What does this tell you about the role of the "non-switchers" (i.e., firms not in the `switchers` data frame) in the regression?
+4. Would you expect the inclusion of controls (see the question above) to have a significant impact on the regression results?
+Why or why not?
+5. What differs between the regressions reported in columns (1) and (3), and (2) and (4) of @tbl-idd-by-year, respectively?
+What happens if you omit the year fixed effects from both sets of regressions?
+What does this tell you about what drives the regression results in this setting?
+6. What patterns do you observe in the coefficients reported in the table titled "Effect of IDD adoption by year"? 
+Do these conform to what you would expect from @Li:2018tj?
+(It may be easiest to focus on these in groups, e.g., those in $t-5$ to $t-2$, those in $t + 0$ to $t+3$ and those for $t+4$ and $t+5$.)
+7. How do the variables in @tbl-idd-by-year differ from those used in Table 3 of @Li:2018tj?
+Modify the code above (e.g., the `year_diff` function) to produce analysis closer to that reported in Table 3 of @Li:2018tj.
+8. How helpful do you find the plot of the coefficients by year?
+9. The `year_diff` function collapses years after $t + 5$ and before $t - 5$ into years $t + 5$ and $t - 5$, respectively. 
+When would this approach make sense? 
+What would be one alternative approach to handling these years?
+Does your suggested approach make a difference in this setting?
+10. Describe the data set created from the following code.
+What proportion of the firms in the data set have `same_state` equal to `TRUE`?
+For the purposes of empirical analysis, do the firms with `same_state` equal to `FALSE` enhance, or detract from, our ability to draw causal inferences about the effect of adoption of IDD?
+
+<ul>
+```{r}
+switch_years <-
+  reg_data_switchers |>
+  group_by(gvkey) |> 
+  arrange(datadate) |> 
+  mutate(same_state = state == lag(state), 
+         adoption_year = period_type == "Post-adoption" & 
+           lag(period_type) == "Pre-adoption") |> 
+  filter(adoption_year) |> 
+  ungroup() 
+```
+</ul>
+
+11. What issues might be implied by the following data? How might you address these?
+
+<ul>
+```{r}
+reg_data_t |> count(t)
+```
+</ul>
