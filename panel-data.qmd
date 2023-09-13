@@ -46,7 +46,6 @@ disclosure_raw <-
 ```
 
 ```{r}
-#| label: fig-max-cust
 #| echo: false
 sales <-
   funda |>
@@ -261,6 +260,8 @@ plot_coefs <- function(fm) {
 ```{r}
 #| warning: false
 #| echo: false
+#| label: fig-coefs-by-year
+#| fig-cap: Plot of coefficients by year
 plot_coefs(fms[[1]])
 ```
 
@@ -283,12 +284,12 @@ Why or why not?
 5. What differs between the regressions reported in columns (1) and (3), and (2) and (4) of @tbl-idd-by-year, respectively?
 What happens if you omit the year fixed effects from both sets of regressions?
 What does this tell you about what drives the regression results in this setting?
-6. What patterns do you observe in the coefficients reported in the table titled "Effect of IDD adoption by year"? 
+6. What patterns do you observe in the coefficients reported in @tbl-idd-by-year? 
 Do these conform to what you would expect from @Li:2018tj?
 (It may be easiest to focus on these in groups, e.g., those in $t-5$ to $t-2$, those in $t + 0$ to $t+3$ and those for $t+4$ and $t+5$.)
 7. How do the variables in @tbl-idd-by-year differ from those used in Table 3 of @Li:2018tj?
 Modify the code above (e.g., the `year_diff` function) to produce analysis closer to that reported in Table 3 of @Li:2018tj.
-8. How helpful do you find the plot of the coefficients by year?
+8. How helpful do you find @fig-coefs-by-year (plot of the coefficients by year)?
 9. The `year_diff` function collapses years after $t + 5$ and before $t - 5$ into years $t + 5$ and $t - 5$, respectively. 
 When would this approach make sense? 
 What would be one alternative approach to handling these years?
