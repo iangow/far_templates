@@ -44,6 +44,7 @@ Each template below shares its name with the corresponding chapter in the [book]
  - [Natural experiments revisited](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd)
  - [Instrumental variables](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)
  - [Panel data](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd)
+ - [Regression discontinuity designs](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd)
  
 ### Part IV: Other topics
 
