@@ -100,6 +100,35 @@ ccmxpf_lnkhist <- tbl(pg, "ccmxpf_lnkhist")
 
 ```{r}
 #| include: false
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  rename(permno = lpermno) |>
+  select(gvkey, permno, linkdt, linkenddt)
+
+gvkeys <-
+  ccm_link |>
+  mutate(test_date = as.Date("2004-06-28")) |>
+  filter(test_date >= linkdt, 
+         test_date <= linkenddt | is.na(linkenddt)) |>
+  select(gvkey, permno) |>
+  collect()
+```
+
+```{r}
+#| include: false
+crsp_sample <-
+  stocknames |>
+  mutate(test_date = as.Date("2004-06-25")) |>
+  filter(test_date >= namedt, test_date <= nameenddt) |>
+  select(permno, permco, ticker, shrcls) |>
+  distinct() |>
+  collect()
+```
+
+```{r}
+#| include: false
 #| cache: true
 sho_data <- 
   fhk_pilot |>
@@ -120,7 +149,6 @@ Why is code like this not included above?
 
 <ul>
 ```{r}
-#| eval: false
 sho_r3000 |>
   anti_join(crsp_sample, join_by(russell_ticker == ticker)) |>
   collect()
