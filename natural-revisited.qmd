@@ -222,15 +222,7 @@ What kind of expertise is necessary in evaluating hypotheses in this way?
 How might such a process have been run?
 What challenges would such a process face?
 
-## Analysing natural experiments {#sec-analyse-natural}
-
-## Evaluating natural experiments
-
-## The parallel trends assumption {#sec-parallel-trends}
-
 ## Indirect effects of Reg SHO {#sec-sho-indirect}
-
-### Earnings management after @Dechow:1995wr 
 
 ### FHK: Data steps
 
