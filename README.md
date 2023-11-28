@@ -15,37 +15,51 @@ Instructors can contact [Ian Gow](mailto:ian.gow@unimelb.edu.au) for these solut
 
 Each template below shares its name with the corresponding chapter in the [book](https://iangow.github.io/far_book/).
 
+For chapters of the book that use the WRDS PostgreSQL database, we have also included a template that uses a local parquet repository as described in [an appendix](https://iangow.github.io/far_book/parquet-wrds.html) of the book.
+To use these templates, you simply need to have downloaded the needed parquet files and edit the line in the template to set `DATA_DIR` to the location of these files on your hard drive.
+
 ### Part I: Foundations
 
- - [Describing data](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd)
- - [Regression fundamentals](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd)
- - [Causal inference](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd)
- - Statistical inference: Chapter under development
- - [Financial statements: A first look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd)
- - [Financial statements: A second look](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd)
- - Linking databases: Template to come later
- - [Importing data](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd)
+| Chapter | PostgreSQL template | Parquet template |
+|---------|---------------------|------------------|
+| Describing data | [r-intro.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd) | Use PostgreSQL template |
+| Regression fundamentals | [reg-basics.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd) | Use PostgreSQL template |
+| Causal inference | [causal-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd) | Use PostgreSQL template |
+| Statistical inference | Chapter under development | Chapter under development |
+| Financial statements: A first look | [fin-state.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd) | [fin-state-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-pq.qmd) |
+| Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) | 
+| Linking databases | Template to come later | Template to come later
+| Importing data | [web-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd) | Use PostgreSQL template |
 
 ### Part II: Capital markets research
 
- - [Capital markets research in accounting](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd)
- - [FFJR](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd)
- - [Ball and Brown (1968)](https://raw.githubusercontent.com/iangow/far_templates/main/bb68.qmd)
- - [Beaver (1968)](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68.qmd)
- - [Event studies](https://raw.githubusercontent.com/iangow/far_templates/main/event-studies.qmd)
- - [Post-earnings announcement drift](https://raw.githubusercontent.com/iangow/far_templates/main/pead.qmd)
- - [Accruals](https://raw.githubusercontent.com/iangow/far_templates/main/accruals.qmd)
- - [Earnings management](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt.qmd)
+| Chapter | PostgreSQL template | Parquet template |
+|---------|---------------------|------------------|
+| Capital markets research in accounting | [cap-mkts.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd) | Template to come |
+| FFJR | [ffjr.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd) | [ffjr-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr-pq.qmd) |
+| Ball and Brown (1968) | [bb68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68.qmd) | [bb68-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68-pq.qmd) |
+| Beaver (1968) | [beaver68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68.qmd) | Template to come |
+| Event studies | [event-studies.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/event-studies.qmd) | Template to come |
+| Post-earnings announcement drift | [pead.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/pead.qmd) | Template to come |
+| Accruals | [accruals.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/accruals.qmd) | Template to come |
+| Earnings management | [earnings-mgt.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt.qmd) | Template to come |
 
 ### Part III: Causal inference
 
- - [Natural experiments](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd)
- - [Causal mechanisms](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd)
- - [Natural experiments revisited](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd)
- - [Instrumental variables](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)
- - [Panel data](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd)
- - [Regression discontinuity designs](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd)
+| Chapter | PostgreSQL template | Parquet template |
+|---------|---------------------|------------------|
+| Natural experiments | [natural.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd) | Template to come |
+| Causal mechanisms | [mechanisms.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd) | Template to come |
+| Natural experiments revisited | [natural-revisited.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd) | Template to come |
+| Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd) | Template to come |
+| Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) | Template to come |
+| Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | Template to come |
  
 ### Part IV: Other topics
+
+| Chapter | PostgreSQL template | Parquet template |
+|---------|---------------------|------------------|
+
+### Other files
 
  - Bibliography file: [`book.bib`](https://raw.githubusercontent.com/iangow/far_templates/main/book.bib)

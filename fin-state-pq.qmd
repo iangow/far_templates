@@ -1,0 +1,143 @@
+---
+title: "Template for 'Financial statements: A first look'"
+author: Your name
+format: html
+---
+
+## Setting up WRDS
+
+```{r}
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(DBI)
+library(ggplot2)
+library(farr)
+```
+
+```{r}
+Sys.setenv(DATA_DIR = "~/Dropbox/pq_data")
+```
+
+```{r}
+#| include: false
+db <- dbConnect(duckdb::duckdb())
+```
+
+## Financial statement data
+
+## Exercises
+
+1. Suppose we didn't have access to Compustat (or an equivalent database) for the analysis above, describe a process you would use to get the data required to make the plot above comparing performance of Microsoft and Apple.
+
+It does not seem easy to get these data from either Google Finance or Yahoo Finance.
+We could hand-collect these items from the financial statements of the firms, but not easily before ~1995.
+Bloomberg or similar might be another source.
+The reality is that it would be very difficult to collect these data without access to a commercial database (Compustat data are supplied in various forms to private industry; FactSet is an alternative).
+
+2. In the following code, how do `funda_mod` and `funda_mod_alt` differ?
+(For example, where are the data for each table?)
+What does the statement `collect(n = 100)` at the end of this code do?
+
+```{r}
+#| include: false
+funda <- load_parquet(db, "funda", "comp")
+
+funda_mod <-
+  funda %>%
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") %>%
+  filter(fyear >= 1980)
+
+funda_mod_alt <-
+  funda_mod %>%
+  collect(n = 100)
+```
+
+3. The table `comp.company` has data on SIC (Standard Industrial Classification) codes in the field `sic`.
+In words, what is the `case_when` function doing in the following code?
+Why do we end up with just two rows?
+
+```{r}
+company <- load_parquet(db, "company", "comp")
+
+sample <-
+  company %>%
+  select(gvkey, sic) %>%
+  mutate(co_name = case_when(gvkey == "001690" ~ "Apple",
+                             gvkey == "012141" ~ "Microsoft",
+         TRUE ~ NA_character_)) %>%
+  filter(!is.na(co_name))
+```
+
+4. What does the data frame `another_sample` represent?
+What happens if we change the `inner_join` statement below to simply `inner_join(sample)`.
+What happens if we omit change it to `inner_join(sample, by = "sic")` (i.e., omit the `suffix = c("", "_other")` portion)?
+Why do you think we want `filter(gvkey != gvkey_other)`?
+
+```{r}
+another_sample <-
+  company %>%
+  select(gvkey, sic) %>%
+  inner_join(sample, by = "sic", suffix = c("", "_other")) %>%
+  filter(gvkey != gvkey_other) %>%
+  mutate(group = paste(co_name, "peer")) %>%
+  select(gvkey, group)
+```
+
+5. What is the following code doing?
+
+```{r}
+total_sample <-
+  sample %>%
+  rename(group = co_name) %>%
+  select(gvkey, group) %>%
+  union_all(another_sample)
+```
+
+6. Suppose that we are interested in how firms' level of R&D activity. 
+One measure of R&D activity is *R&D Intensity*, which can be defined as "R&D expenses" (Compustat item `xrd`) scaled by "Total Assets" (Compustat item `at`). 
+In `xrd_at`, what's the difference between `rd_intensity` and `rd_intensity_alt`?
+Does `filter(at > 0)` seem like a reasonable filter?
+What happens if we omit it?
+
+```{r}
+xrd_at <-
+  funda_mod %>%
+  select(gvkey, datadate, fyear, conm, xrd, at) %>%
+  filter(at > 0) %>%
+  mutate(rd_intensity = xrd/at,
+         xrd_alt = coalesce(xrd, 0),
+         rd_intensity_alt = xrd_alt/at) %>%
+  inner_join(total_sample, by = "gvkey") 
+```
+
+7. Looking at a sample of rows from `xrd_at_sum`, it appears that the three R&D intensity measures are always identical for Apple and Microsoft, but generally different for their peer groups.
+What explains these differences?
+Can you say that one measure is "correct"? 
+Or would you say "it depends"?
+
+```{r}
+xrd_at_sum <-
+  xrd_at %>%
+  group_by(group, fyear) %>%
+  summarize(total_at = sum(at, na.rm = TRUE),
+            total_rd = sum(xrd, na.rm = TRUE),
+            rd_intensity1 = mean(xrd/at, na.rm = TRUE),
+            rd_intensity2 = mean(xrd_alt/at, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(rd_intensity3 = if_else(total_at > 0, total_rd/total_at, NA_real_)) %>%
+  collect()
+  
+xrd_at_sum %>%
+  select(-total_at, -total_rd) %>%
+  arrange(desc(fyear), group)
+```
+
+8. Write code to produce the following plot (see [book](https://iangow.github.io/far_book/fin-state.html#exercises-8) for the plot).
+Also produce plots that use `rd_intensity1` and `rd_intensity2` as measures of R&D intensity.
+Do the plots help you think about which of the three measures makes most sense?
+
+```{r}
+#| include: false
+dbDisconnect(db, shutdown=TRUE)
+```

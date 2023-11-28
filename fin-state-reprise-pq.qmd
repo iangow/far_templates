@@ -1,0 +1,204 @@
+---
+title: "Exercise template for 'Financial statements: A second look'"
+author: Ian Gow
+format: html
+bibliography: book.bib
+---
+
+We have included a bibliography entry in the header information here.
+The file for this can be found on [the `far_templates` page](https://github.com/iangow/far_templates/blob/main/README.md).
+
+## Core attributes of financial statements
+
+```{r}
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(DBI)
+library(ggplot2)
+library(farr)
+```
+
+```{r}
+#| include: false
+#
+# Change the line below to reflect the location of the Parquet files
+# on your computer.
+Sys.setenv(DATA_DIR = "~/Dropbox/pq_data")
+```
+
+```{r}
+#| include: false 
+db <- dbConnect(duckdb::duckdb())
+
+funda <- load_parquet(db, "funda", "comp")
+company <-  load_parquet(db, "company", "comp")
+
+funda_mod <-
+  funda %>%
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+```
+
+## Balance sheets
+
+## Within-statement articulation
+
+```{r}
+#| include: false
+na_sample_firm_years <-
+  funda_mod %>%
+  filter(gvkey == "008902", datadate >= "2000-01-01") %>%
+  select(gvkey, datadate)
+```
+
+```{r}
+#| include: false
+tol <- 1e-3
+
+funda_na_fixed <-
+  funda_mod %>%
+  select(gvkey, datadate, act, ppent, ivaeq, ivao, intan, ao, at,
+         dc, aox) %>%
+  mutate(at_calc = coalesce(act, 0) + coalesce(ppent, 0) + coalesce(ivaeq, 0) + 
+           coalesce(ivao, 0) + coalesce(intan, 0) + coalesce(ao, 0),
+         at_diff = at_calc - at,
+         balance = abs(at_diff) < tol)
+```
+
+### Exercises
+
+1. What is the value in `funda_na_fixed` of `at` when `balance` is `NA`? Is this surprising?
+
+2. Write code to calculate `decade`, the decade in which `datadate` for each observation falls. 
+(Hint: The functions `floor` and `year` and the number `10` may be helpful.)
+
+3. Are there any cases in `funda_na_fixed` where `at_calc` is greater than zero and `at` is `NA`? 
+Which decades are these mostly found in?
+If you were doing research with these data, how might you handle these cases?
+
+4. Consider the firm with `gvkey` equal to `016476`. 
+Write code to obtain the company name and CIK from the `company` table defined above.
+Using that CIK, find the 10-K filing for the year ending `2003-11-30` on [the SEC website](https://www.sec.gov/edgar/searchedgar/companysearch). 
+(*Note*: The 10-K will be released some time *after* `2003-11-30`.)
+
+5. Looking at the 10-K you just found, what seems to going on with this observation?
+(*Hint*: Examine the contents of `funda_na_fixed` for this observation to see the issue.
+It may help to look at the components of `ao`, which is has balancing model `ao = dc + aox`.)
+
+6. Using the approach above, we can find the relevant 10-K for the following observation [here](https://www.sec.gov/Archives/edgar/data/1074874/000093041302001117/c23823_10ksb.txt).
+What's going on with this case?
+What's the most significant difference between this case and the one above?
+(*Hint*: The following additional Compustat balancing model may help: `act = che + rect + invt + aco`.)
+
+```{r}
+funda_na_fixed %>%
+  filter(gvkey=="145003", datadate=="2001-12-31") %>%
+  select(datadate, at, at_calc, at_diff, act, ppent, intan, ivao, ao) %>%
+  collect()
+```
+
+## Across-statement articulation
+
+```{r}
+#| include: false
+tol <- 0.1
+
+funda_cf_balance <-
+  funda_mod %>%
+  select(gvkey, datadate, oancf, ivncf, fincf, exre, chech, che, ch, ivst) %>%
+  mutate(across(oancf:exre, ~ coalesce(., 0)),
+         chech_calc = oancf + ivncf + fincf + exre,
+         chech_balance = abs(chech_calc - chech) < tol) %>%
+  filter(chech_calc != 0, chech_balance) %>%
+  group_by(gvkey) %>% 
+  dbplyr::window_order(datadate) %>% 
+  mutate(lag_datadate = lag(datadate),
+         d_che = che - lag(che), 
+         d_ch = ch - lag(ch)) %>%
+  ungroup() %>%
+  filter(!is.na(d_che) | !is.na(d_ch)) %>%
+  mutate(artic_desc = 
+           case_when(abs(d_ch - d_che) < tol & abs(chech - d_che) < tol
+                        ~ "Articulates (CHE == CH)",
+                     abs(chech - d_che) < tol   ~ "Articulates using CHE",
+                     abs(chech - d_ch) < tol    ~ "Articulates using CH",
+                     abs(chech - d_che) >= tol  ~ "Does not articulate",
+                     abs(chech - d_ch) >= tol   ~ "Does not articulate",
+                     TRUE ~ "Other"))
+
+funda_cf_balance %>%
+  count(artic_desc) %>%
+  collect()
+```
+
+### Exercises
+
+1. In checking cash flow statement articulation, we used the `across` function (see details [here](https://dplyr.tidyverse.org/reference/across.html)).
+Rewrite the code to create `funda_na_fixed` to use a similar approach.
+Check that you get the same results with respect to `count(balance)` as you get using the original code.
+
+2. Consider the case of American Airlines (GVKEY: `001045`) for the year ended 31 December 2020:
+
+## Missing R & D
+
+In this section, we discuss @Koh:2015vz, who "investigate whether missing R&D expenditures in financial statements indicates a lack of innovation activity. Patent records reveal that 10.5% of missing R&D firms file and receive patents, which is 14 times greater than zero R&D firms."
+
+### Discussion questions
+
+1. What is the following code doing?
+@Koh:2015vz use a similar `filter`. How do they explain their rationale for this?
+
+```{r}
+included_firms <-
+  company %>%
+  mutate(sic = as.integer(sic)) %>%
+  filter(!between(sic, 4900, 4999), !between(sic, 6000, 6999)) %>%
+  select(gvkey)
+
+rd_data <-
+  funda_mod %>%
+  semi_join(included_firms, by = "gvkey") %>%
+  mutate(missing_rd = is.na(xrd),
+         zero_rd = xrd == 0,
+         year = year(datadate)) %>%
+  select(gvkey, datadate, year, xrd, missing_rd, zero_rd, at) %>%
+  collect()
+```
+
+2. Is there a balancing model that includes R&D spending?
+
+3. @Koh:2015vz find that many "studies in *The Accounting Review* use R&D in their analysis and code the missing values as zero, implicitly assuming that blank R&D is equal to zero R&D, [while many] articles in the *Journal of Finance* [code] … the blank values as zero and including a dummy variable to indicate blank R&D firms. ...  In contrast, 42% of the studies in the *Strategic Management Journal* use R&D and they take a very different approach, often replacing the missing R&D values with either the industry average R&D, or a historical value from prior years."
+Why do scholars from different fields make such different choices?
+In light of @Koh:2015vz, do you think that one approach is more correct than the others?
+
+4. Focusing on years 1980-2019, what have been the trends in the proportion of firms not reporting R&D and the "average" amount of R&D (scaled by assets)?^[At the time of writing, 2020 is too incomplete to be meaningful.]
+(In calculating the "average" does it make sense to use the `mean` or `median`?)
+Speculate as to what might explain these trends.
+
+5. Consider the [10-K filing](https://www.sec.gov/Archives/edgar/data/1598014/000159801421000015/0001598014-21-000015-index.htm) made by IHS Markit Ltd on 2021-01-22.
+Based on the information in the filing, do you think that IHS Markit engages in research and development activity?
+Does IHS Markit generate patents?
+Are there other forms of intellectual property protection that IHS Markit relies on?
+Does IHS Markit report an amount for research and development expenditure?
+Who is the IHS Markit's external auditor?
+Do you think that IHS Markit is in violation of GAAP?
+Or is its reporting choice with respect to R&D a within-GAAP use of reporting discretion?
+
+6. @Koh:2015vz state that "our first set of tests compare patent activity between non-reporting R&D firms and firms that report zero R&D. … We use both full sample and propensity score matched samples. … While full sample tests allow for greater external validity, the matched sample tests potentially improve the local treatment effect. … Based on the propensity score matched sample, our multivariate tests indicate that, on average, non-reporting R&D firms file about 14 times more patent applications than the matched zero R&D firms."
+In speaking of "treatment effects" @Koh:2015vz implicitly view disclosure of R&D as a treatment variable and patent applications as an outcome.
+Does this make sense to you?
+Do you think that this is really what @Koh:2015vz want to do?
+If not, what is the inference they are trying to draw?
+
+7. What exactly is the take-away from the analysis in section 4.4 which uses "the rapid demise of Arthur Andersen (AA) as a quasi-natural experiment"?
+For example, what is the treatment?
+What assumptions are needed to generalize from the specific treatment to a treatment of wider applicability?
+What additional analyses can you suggest that might provide additional assurance that the results reflect an causal effect of interest?
+
+8. What are the suggested implications of the simulation analysis of section 4.5?
+What are the inherent limitations in a simulation analysis like this one?
+
+```{r}
+#| include: false
+dbDisconnect(db, shutdown=TRUE)
+```
