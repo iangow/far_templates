@@ -19,10 +19,10 @@ library(lubridate) # For floor_date function
 #| include: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-dsf <- tbl(pg, sql("SELECT * FROM crsp.dsf")) 
-dsi <- tbl(pg, sql("SELECT * FROM crsp.dsi")) 
-msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
-msi <- tbl(pg, sql("SELECT * FROM crsp.msi"))
+dsf <- tbl(pg, Id(schema = "crsp", table = "dsf"))
+dsi <- tbl(pg, Id(schema = "crsp", table = "dsi"))
+msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
+msi <- tbl(pg, Id(schema = "crsp", table = "msi"))
 ```
 
 ### Exercises
@@ -55,28 +55,28 @@ Do we get different results?
 ```{r}
 #| echo: false
 plot_data <-
-  dsf %>%
-  select(date) %>%
-  filter(date >= "2018-01-01", date <= "2020-12-31") %>%
-  collect() %>%
+  dsf |>
+  select(date) |>
+  filter(date >= "2018-01-01", date <= "2020-12-31") |>
+  collect() |>
   mutate(month = floor_date(date, "month")) 
 
 freqs <-
-  plot_data %>%
+  plot_data |>
   count(month)
 
-freqs %>%
+freqs |>
   ggplot(aes(x = month, y = n)) +
   geom_bar(stat = "identity") +
   scale_x_date(breaks = "1 month") +
   theme(axis.text.x = element_text(angle = 90))
 
 freqs_alt <-
-  plot_data %>%
-  distinct() %>%
+  plot_data |>
+  distinct() |>
   count(month)
 
-freqs_alt %>%
+freqs_alt |>
   ggplot(aes(x = month, y = n)) +
   geom_bar(stat = "identity") +
   scale_x_date(breaks = "1 month") +
