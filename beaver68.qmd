@@ -67,120 +67,116 @@ library(dbplyr)     # For copy_inline()
 #| include: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-fundq <- tbl(pg, sql("SELECT * FROM comp.fundq"))
+fundq <- tbl(pg, Id(schema = "comp", table = "fundq"))
+ccmxpf_lnkhist <- tbl(pg, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
+dsi <- tbl(pg, Id(schema = "crsp", table = "dsi"))
+dsf <- tbl(pg, Id(schema = "crsp", table = "dsf"))
+stocknames <- tbl(pg, Id(schema = "crsp", table = "stocknames"))
 
 first_date <- "2010-01-01"
 last_date <- "2019-12-31"
 
 earn_annc_dates <-
-  fundq %>%
+  fundq |>
   filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") %>%
-  filter(!is.na(rdq), fqtr==4L) %>%
-  select(gvkey, datadate, rdq) %>%
-  filter(between(datadate, first_date, last_date)) %>%
+         consol == "C", popsrc == "D") |>
+  filter(!is.na(rdq), fqtr==4L) |>
+  select(gvkey, datadate, rdq) |>
+  filter(between(datadate, first_date, last_date)) |>
   collect()
-
-ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist"))
 
 ccm_link <-
-  ccmxpf_lnkhist %>%
+  ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) %>%
-  rename(permno = lpermno) %>%
+         linkprim %in% c("C", "P")) |>
+  rename(permno = lpermno) |>
   collect()
 
-dsi <- tbl(pg, sql("SELECT * FROM crsp.dsi"))
-
 trading_dates <-
-  dsi %>%
-  select(date) %>%
-  collect() %>%
-  arrange(date) %>%
+  dsi |>
+  select(date) |>
+  collect() |>
+  arrange(date) |>
   mutate(td = row_number())
 
 annc_dates <-
   tibble(annc_date = seq(min(trading_dates$date), 
-                         max(trading_dates$date), 1)) %>%
-  left_join(trading_dates, by = c("annc_date"="date")) %>%
+                         max(trading_dates$date), 1)) |>
+  left_join(trading_dates, by = c("annc_date"="date")) |>
   fill(td, .direction = "up")
 
 days_before <- 20L
 days_after <- 20L
 
-dsf <- tbl(pg, sql("SELECT * FROM crsp.dsf"))
-
 mkt_rets <-
-  dsf %>%
-  inner_join(dsi, by = "date") %>%
-  mutate(ret_mkt = ret - vwretd) %>%
+  dsf |>
+  inner_join(dsi, by = "date") |>
+  mutate(ret_mkt = ret - vwretd) |>
   select(permno, date, ret, ret_mkt, vol)
 
-stocknames <- tbl(pg, sql("SELECT * FROM crsp.stocknames"))
-
 nyse <-
-  stocknames %>% 
-  filter(exchcd==1) %>%
-  select(permno, namedt, nameenddt) %>%
+  stocknames |> 
+  filter(exchcd==1) |>
+  select(permno, namedt, nameenddt) |>
   collect()
 
 earn_annc_links <-
-  earn_annc_dates %>%
-  left_join(ccm_link, by = "gvkey", multiple = "all") %>%
+  earn_annc_dates |>
+  left_join(ccm_link, by = "gvkey", multiple = "all") |>
   filter(datadate >= linkdt, 
-         rdq <= linkenddt | is.na(linkenddt)) %>%
-  inner_join(nyse, by = "permno", multiple = "all") %>%
-  filter(rdq >= namedt, rdq <= nameenddt) %>%
+         rdq <= linkenddt | is.na(linkenddt)) |>
+  inner_join(nyse, by = "permno", multiple = "all") |>
+  filter(rdq >= namedt, rdq <= nameenddt) |>
   select(gvkey, datadate, rdq, permno)
 
 earn_annc_windows <-
-  earn_annc_dates %>%
-  inner_join(annc_dates, by = c("rdq"="annc_date")) %>%
+  earn_annc_dates |>
+  inner_join(annc_dates, by = c("rdq"="annc_date")) |>
   mutate(start_td = td - days_before, 
-         end_td = td + days_after) %>%
-  inner_join(trading_dates, by = c("start_td"="td")) %>%
-  rename(start_date = date) %>%
-  inner_join(trading_dates, by = c("end_td"="td")) %>%
-  select(-start_td, -end_td) %>%
+         end_td = td + days_after) |>
+  inner_join(trading_dates, by = c("start_td"="td")) |>
+  rename(start_date = date) |>
+  inner_join(trading_dates, by = c("end_td"="td")) |>
+  select(-start_td, -end_td) |>
   rename(end_date = date,
          event_td = td)
 
 earn_annc_window_permnos <-
-  earn_annc_windows %>%
+  earn_annc_windows |>
   inner_join(earn_annc_links, by = c("gvkey", "datadate", "rdq"))
 
 earn_annc_crsp <-
-  copy_inline(pg, earn_annc_window_permnos) %>%
-  inner_join(mkt_rets, by = "permno") %>%
-  filter(date >= start_date, date <= end_date) %>%
-  select(gvkey, datadate, rdq, event_td, date, ret, ret_mkt, vol) %>%
+  copy_inline(pg, earn_annc_window_permnos) |>
+  inner_join(mkt_rets, by = "permno") |>
+  filter(date >= start_date, date <= end_date) |>
+  select(gvkey, datadate, rdq, event_td, date, ret, ret_mkt, vol) |>
   collect()
 ```
 
 ```{r ret_data}
 #| include: false
 earn_annc_rets <-
-  earn_annc_crsp %>%
-  inner_join(trading_dates, by = "date") %>%
+  earn_annc_crsp |>
+  inner_join(trading_dates, by = "date") |>
   mutate(relative_td = td - event_td) 
 ```
 
 ```{r ret-data-vols}
 #| include: false
 earn_annc_vols <-
-  earn_annc_rets %>%
-  group_by(gvkey, datadate) %>%
-  mutate(avg_vol = mean(vol, na.rm = TRUE)) %>%
+  earn_annc_rets |>
+  group_by(gvkey, datadate) |>
+  mutate(avg_vol = mean(vol, na.rm = TRUE)) |>
   mutate(rel_vol = vol/avg_vol,
-         year = year(datadate)) %>%
+         year = year(datadate)) |>
   ungroup() 
 ```
 
 ```{r ret-summ}
 #| include: false
 earn_annc_summ <-
-  earn_annc_vols %>%
-  group_by(relative_td, year) %>%
+  earn_annc_vols |>
+  group_by(relative_td, year) |>
   summarize(obs = n(),
             mean_ret = mean(ret, na.rm = TRUE),
             mean_ret_mkt = mean(ret_mkt, na.rm = TRUE),
