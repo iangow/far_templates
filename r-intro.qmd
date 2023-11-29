@@ -26,19 +26,19 @@ library(lubridate)  # For ceiling_date()
 ```{r}
 #| include: false
 rets_nab_cba <-
-  aus_banks %>%
-  inner_join(aus_bank_rets, by = "gvkey") %>%
-  filter(ticker %in% c("CBA", "NAB")) %>%
+  aus_banks |>
+  inner_join(aus_bank_rets, by = "gvkey") |>
+  filter(ticker %in% c("CBA", "NAB")) |>
   select(ticker, datadate, ret)
 ```
 
 ```{r}
 #| include: false
 rets_nab_cba_wide <-
-  rets_nab_cba %>%
+  rets_nab_cba |>
   pivot_wider(id_cols = datadate,
               names_from = ticker,
-              values_from = ret) %>%
+              values_from = ret) |>
   drop_na()
 ```
 
@@ -59,11 +59,11 @@ cov_alt <- function(x, y) {
 ```{r}
 #| include: false
 latest_mkt_cap <-
-  aus_banks %>%
-  inner_join(aus_bank_rets, by = "gvkey") %>%
-  filter(datadate == max(datadate)) %>%
-  select(ticker, co_name, mkt_cap) %>%
-  arrange(desc(mkt_cap)) %>%
+  aus_banks |>
+  inner_join(aus_bank_rets, by = "gvkey") |>
+  filter(datadate == max(datadate)) |>
+  select(ticker, co_name, mkt_cap) |>
+  arrange(desc(mkt_cap)) |>
   mutate(ticker = fct_inorder(ticker))
 ```
 

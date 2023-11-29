@@ -15,10 +15,6 @@ library(farr)
 ```
 
 ```{r}
-Sys.setenv(DATA_DIR = "~/Dropbox/pq_data")
-```
-
-```{r}
 #| include: false
 db <- dbConnect(duckdb::duckdb())
 ```

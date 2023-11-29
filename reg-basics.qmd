@@ -30,23 +30,23 @@ if (knitr::is_latex_output()) {
 ```{r}
 #| include: false
 test_summ <-
-  test_scores %>%
-  filter(grade %in% 6:7L) %>%
-  group_by(post, treat) %>%
-  summarize(score = mean(score), .groups = "drop") %>%
-  pivot_wider(names_from = post, values_from = score) %>%
-  rename(post = `TRUE`, pre = `FALSE`) %>%
+  test_scores |>
+  filter(grade %in% 6:7L) |>
+  group_by(post, treat) |>
+  summarize(score = mean(score), .groups = "drop") |>
+  pivot_wider(names_from = post, values_from = score) |>
+  rename(post = `TRUE`, pre = `FALSE`) |>
   mutate(change = post - pre)
 ```
 
 ```{r}
 #| include: false
 mean_by_grade <-
-  test_scores %>%
-  group_by(grade) %>%
+  test_scores |>
+  group_by(grade) |>
   summarize(score = mean(score),
             .groups = "drop") 
-mean_by_grade %>% kable(digits = 3)
+mean_by_grade |> kable(digits = 3)
 ```
 
 ```{r}
@@ -61,10 +61,10 @@ summary(fm_grade)
 demean <- function(x) x - mean(x)
 
 test_scores_demean <-
-  test_scores %>%
-  group_by(id) %>%
-  mutate(score = demean(score)) %>%
-  group_by(grade) %>%
+  test_scores |>
+  group_by(id) |>
+  mutate(score = demean(score)) |>
+  group_by(grade) |>
   mutate(score = demean(score)) 
   
 fm_demean <- lm(score ~ treat * post, 
@@ -77,21 +77,21 @@ stargazer(fm_demean, type = sg_format,
 
 ### Exercises
 
-1.  **In using `pivot_wider` in Chapter 3, we supplied a value to the `id_cols` argument, but we omitted that in creating `test_summ`. If we wanted to be explicit, what value would we need to provide for that argument in the code creating `test_summ`?**
+1.  In using `pivot_wider` in Chapter 3, we supplied a value to the `id_cols` argument, but we omitted that in creating `test_summ`. If we wanted to be explicit, what value would we need to provide for that argument in the code creating `test_summ`?
 
-2.  **What is the relation between the means in the table produced from `mean_by_grade` and the regression coefficients in `fm_grade`?**
+2.  What is the relation between the means in the table produced from `mean_by_grade` and the regression coefficients in `fm_grade`?
 
-3.  **Why is there no estimated coefficient for `factor(grade)5` in `fm_grade`? (*Hint:* See previous question.)**
+3.  Why is there no estimated coefficient for `factor(grade)5` in `fm_grade`? (*Hint:* See previous question.)
 
-4.  **Now let's return to our earlier regression specification, except this time we include fixed effects for `grade` (see code and output below).**
+4.  Now let's return to our earlier regression specification, except this time we include fixed effects for `grade` (see code and output below).
 
-**With this approach (output below), we have *two* fixed effects omitted: `factor(grade)5` (not even shown) and `factor(grade)8`, which is shown, but with `NA` estimates. Why are we losing two fixed effects, while above we lost just one? (*Hint*: Which variables can be expressed as linear combinations of the `grade` indicators?)**
+With this approach (output below), we have *two* fixed effects omitted: `factor(grade)5` (not even shown) and `factor(grade)8`, which is shown, but with `NA` estimates. Why are we losing two fixed effects, while above we lost just one? (*Hint*: Which variables can be expressed as linear combinations of the `grade` indicators?)
 
-5.  **In words, what are we doing to create `test_scores_demean`? Intuitively, why might this affect the need to use fixed effects?**
+5.  In words, what are we doing to create `test_scores_demean`? Intuitively, why might this affect the need to use fixed effects?
 
-6.  **What's going on in the regression stored in `fm_demean` above? Can you relate the coefficients to the numbers in the following table? Which of these estimated coefficients is meaningful? All of them? Some of them? None of them?**
+6.  What's going on in the regression stored in `fm_demean` above? Can you relate the coefficients to the numbers in the following table? Which of these estimated coefficients is meaningful? All of them? Some of them? None of them?
 
-7.  **The `felm` function from the `lfe` package offers a succinct syntax for adding fixed effects and uses computationally efficient algorithms (much like our demeaning approach above) to estimating these. What is the same in the results below and the two specifications we estimated above? What is different? Why might these differences exist? What is the `I()` function doing here? What happens if we omit it (i.e., just include `post * treat`)?**
+7.  The `felm` function from the `lfe` package offers a succinct syntax for adding fixed effects and uses computationally efficient algorithms (much like our demeaning approach above) to estimating these. What is the same in the results below and the two specifications we estimated above? What is different? Why might these differences exist? What is the `I()` function doing here? What happens if we omit it (i.e., just include `post * treat`)?
 
 ## Frisch-Waugh-Lovell theorem {#fwl}
 
@@ -104,6 +104,6 @@ fm <- lm(ta ~ big_n + cfo + size + lev + mtb +
 
 ### Exercises
 
-1.  **Verify the Frisch-Waugh-Lovell theorem using `big_n` and `cfo` in place of `size`. For each variable, also produce plots like those above (including outliers). Are the plots with `big_n` as the independent variable less helpful than those with `cfo` or `size`?**
+1.  Verify the Frisch-Waugh-Lovell theorem using `big_n` and `cfo` in place of `size`. For each variable, also produce plots like those above (including outliers). Are the plots with `big_n` as the independent variable less helpful than those with `cfo` or `size`?
 
-2.  **In words, what effect does converting `fyear` into a factor and interacting it with `inv_at`, `I(d_sale - d_ar)` and `ppe` have? (*Hint:* It may be helpful to visual inspect the more complete regression output produced with `sg_format <- "text"` and without `omit = "(fyear|ppe|inv_at|d_sale)"`.)**
+2.  In words, what effect does converting `fyear` into a factor and interacting it with `inv_at`, `I(d_sale - d_ar)` and `ppe` have? (*Hint:* It may be helpful to visual inspect the more complete regression output produced with `sg_format <- "text"` and without `omit = "(fyear|ppe|inv_at|d_sale)"`.)
