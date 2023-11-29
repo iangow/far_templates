@@ -21,9 +21,12 @@ library(ggplot2)
 ```{r}
 #| echo: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-seg_customer <- tbl(pg, sql("SELECT * FROM comp_segments_hist_daily.seg_customer"))
-names_seg <- tbl(pg, sql("SELECT * FROM comp_segments_hist_daily.names_seg"))
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
+seg_customer <- tbl(pg, 
+                    Id(schema = "comp_segments_hist_daily", 
+                       table = "seg_customer"))
+names_seg <- tbl(pg,
+                 Id(schema = "comp_segments_hist_daily", table = "names_seg"))
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
 ```
 
 ```{r}

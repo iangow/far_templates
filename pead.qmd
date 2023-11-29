@@ -151,7 +151,6 @@ fyear_data <-
 plot_sample <-
   fyear_data |>
   filter(year %in% c(2001, 2002)) |>
-  select(datadate, fyear, starts_with("pred_")) |>
   distinct() |>
   arrange(datadate)
 
@@ -175,7 +174,7 @@ Would the inclusion of `- 1` affect the fit of `fms[[2]]`?
 Would it affect the interpretability of results?
 3. Does @fig-plot-sample help understand what's going on?
 Why did we focus on a relatively short period in the plot?
-(*Hint*: What happens if you remove the line `filter(year %in% c(2001, 2002)) %>%` from the code?)
+(*Hint*: What happens if you remove the line `filter(year %in% c(2001, 2002)) |>` from the code?)
 4. Using `year` and `month`, add some code along the lines of `mutate(fyear_calc = ...)` to *calculate* `fyear`.
 Check that you match `fyear` in each case.
 
@@ -197,26 +196,26 @@ Can you speculate as to why this might be the case?
 #| fig-cap: Sales and net income by quarter over decades
 #| echo: false
 ni_merged <-
-  ni_annual %>%
-  inner_join(link_table, by = c("gvkey", "datadate", "fyr")) %>%
+  ni_annual |>
+  inner_join(link_table, by = c("gvkey", "datadate", "fyr")) |>
   inner_join(ni_qtrly, by = c("gvkey", "fyr", "datadateq"))
 
 plot_data <-
-  ni_merged %>% 
-  mutate(decade = paste0(as.character(floor(fyearq/10) * 10), "s")) %>%
-  filter(!is.na(fqtr), fyearq < 2020) %>%
-  group_by(decade, fqtr) %>% 
+  ni_merged |> 
+  mutate(decade = paste0(as.character(floor(fyearq/10) * 10), "s")) |>
+  filter(!is.na(fqtr), fyearq < 2020) |>
+  group_by(decade, fqtr) |> 
   summarize(prop_ni = sum(niq, na.rm = TRUE)/
               sum(ni, na.rm = TRUE),
             prop_sale = sum(saleq, na.rm = TRUE)/
               sum(sale, na.rm = TRUE),
-            .groups = "drop") %>%
-  mutate(fqtr = factor(fqtr)) %>%
+            .groups = "drop") |>
+  mutate(fqtr = factor(fqtr)) |>
   pivot_longer(cols = c(prop_ni, prop_sale),
                names_to = "metric",
                values_to = "value")
 
-plot_data %>%
+plot_data |>
   ggplot(aes(x = fqtr, y = value, fill = fqtr)) +
   geom_bar(stat = "identity") +
   facet_grid(metric ~ decade)
@@ -249,33 +248,33 @@ Can you suggest an alternative approach to measuring performance that might plac
 #| include: false
 #| cache: true
 qtr_num <-
-  merged_data %>% 
-  group_by(gvkey, datadate) %>% 
-  count(name= "num_quarters") %>% 
+  merged_data |> 
+  group_by(gvkey, datadate) |> 
+  count(name= "num_quarters") |> 
   ungroup()
 
 regular_fyears <-
-  firm_years %>%
-  inner_join(qtr_num, by = c("gvkey", "datadate")) %>%
-  group_by(gvkey) %>%
-  arrange(gvkey, datadate) %>%
-  mutate(fyear_length = datadate - lag(datadate)) %>%
-  ungroup() %>%
+  firm_years |>
+  inner_join(qtr_num, by = c("gvkey", "datadate")) |>
+  group_by(gvkey) |>
+  arrange(gvkey, datadate) |>
+  mutate(fyear_length = datadate - lag(datadate)) |>
+  ungroup() |>
   mutate(regular_year = num_quarters == 4 & 
-           (is.na(fyear_length) | fyear_length %in% c(365, 366))) %>%
-  filter(regular_year) %>%
+           (is.na(fyear_length) | fyear_length %in% c(365, 366))) |>
+  filter(regular_year) |>
   select(gvkey, datadate)
 
 reg_data_fos <-
-  merged_data %>%
-  semi_join(regular_fyears, by = c("gvkey", "datadate")) %>%
-  select(gvkey, datadateq, fyearq, rdq, ibq) %>%
-  group_by(gvkey) %>%
-  arrange(datadateq) %>%
+  merged_data |>
+  semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
+  select(gvkey, datadateq, fyearq, rdq, ibq) |>
+  group_by(gvkey) |>
+  arrange(datadateq) |>
   mutate(ib_lag_4 = lag(ibq, 4L),
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
-         qtr = quarter(datadateq, with_year = TRUE)) %>%
+         qtr = quarter(datadateq, with_year = TRUE)) |>
   ungroup()
 ```
 
@@ -289,16 +288,16 @@ fit_model_fos <- function(gvkey, quarter) {
   min_qtrs <- 10
   
   firm_data <-
-    reg_data_fos %>%
+    reg_data_fos |>
     filter(gvkey == !!gvkey)
 
   train_data <-
-    firm_data %>%
-    filter(qtr < !!quarter) %>%
+    firm_data |>
+    filter(qtr < !!quarter) |>
     top_n(n_qtrs, datadateq)
 
   test_data <-
-    firm_data %>%
+    firm_data |>
     filter(qtr == !!quarter)
 
   if (nrow(train_data) < min_qtrs) return(NULL)
@@ -314,31 +313,31 @@ fit_model_fos <- function(gvkey, quarter) {
   
   if (!is.null(ib_fm)) {
     train_results <- 
-      train_data %>%
+      train_data |>
       mutate(fib = ib_lag_4 + predict(ib_fm))
   } else {
     train_results <- 
-      train_data %>%
+      train_data |>
       mutate(fib = ib_lag_4)
   }
   
   denom_m2 <- 
-    train_results %>%
-      mutate(fe = ibq - fib) %>%
-      pull() %>%
+    train_results |>
+      mutate(fe = ibq - fib) |>
+      pull() |>
       sd()
     
   if (is.null(ib_fm)) {
     results <- 
-      test_data %>%
+      test_data |>
       mutate(fib = ib_lag_4) 
   } else {
     results <- 
-      test_data %>%
+      test_data |>
       mutate(fib = ib_lag_4 + predict(ib_fm, newdata = test_data))
   }
     
-  results %>%
+  results |>
     mutate(fe1 = (ibq - fib)/abs(ibq),
            fe2 = (ibq - fib)/denom_m2)
 }
@@ -350,23 +349,23 @@ fit_model_fos <- function(gvkey, quarter) {
 #| eval: true
 #| include: false
 quarters <-
-  reg_data_fos %>% 
-  filter(qtr >= 2010, qtr < 2020) %>%
-  select(qtr) %>% 
-  distinct() %>%
-  arrange(qtr) %>%
+  reg_data_fos |> 
+  filter(qtr >= 2010, qtr < 2020) |>
+  select(qtr) |> 
+  distinct() |>
+  arrange(qtr) |>
   pull()
   
 get_results <- function(quarter) {
   
   gvkeys <- 
-    reg_data_fos %>%
-    filter(qtr == quarter) %>%
-    select(gvkey) %>%
-    distinct() %>%
+    reg_data_fos |>
+    filter(qtr == quarter) |>
+    select(gvkey) |>
+    distinct() |>
     pull()
   
-  Map(fit_model_fos, gvkeys, quarter) %>%
+  Map(fit_model_fos, gvkeys, quarter) |>
     bind_rows()
 }  
 ```
@@ -391,12 +390,12 @@ get_deciles <- function(x) {
 }
 
 decile_cuts <-
-  results %>%
-  group_by(qtr) %>%
+  results |>
+  group_by(qtr) |>
   summarize(fe1_deciles = get_deciles(fe1),
             fe2_deciles = get_deciles(fe2),
-            .groups = "drop") %>%
-  arrange(qtr) %>%
+            .groups = "drop") |>
+  arrange(qtr) |>
   mutate(fe1_deciles_lag = lag(fe1_deciles),
          fe2_deciles_lag = lag(fe2_deciles))
 ```
@@ -407,12 +406,12 @@ decile_cuts <-
 #| dependson: results_2
 #| cache: true
 results_deciles <-
-  results %>%
-  inner_join(decile_cuts, by = "qtr") %>%
-  rowwise() %>%
+  results |>
+  inner_join(decile_cuts, by = "qtr") |>
+  rowwise() |>
   mutate(fe1_decile = cut(fe1, fe1_deciles_lag, labels = FALSE),
-         fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) %>%
-  filter(!is.na(fe1_decile) | !is.na(fe2_decile)) %>%
+         fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) |>
+  filter(!is.na(fe1_decile) | !is.na(fe2_decile)) |>
   select(-matches("^fe[12]_deciles"))
 ```
 
@@ -422,15 +421,15 @@ results_deciles <-
 #| eval: false
 #| include: false
 link_table <-
-  results_deciles %>%
-  select(gvkey, rdq) %>%
-  inner_join(ccm_link, join_by(gvkey, rdq >= linkdt, rdq <= linkenddt)) %>%
-  mutate(permno = as.integer(lpermno)) %>%
+  results_deciles |>
+  select(gvkey, rdq) |>
+  inner_join(ccm_link, join_by(gvkey, rdq >= linkdt, rdq <= linkenddt)) |>
+  mutate(permno = as.integer(lpermno)) |>
   select(gvkey, rdq, permno)
 
 rets <- 
   get_event_rets(link_table, pg, 
-                 event_date = "rdq", win_start = -60, win_end = 60) %>%
+                 event_date = "rdq", win_start = -60, win_end = 60) |>
   nest_by(rdq, permno)
 ```
 
@@ -442,13 +441,13 @@ Here we are largely following the approach described on p.7 of @Bernard:1989uu.
 #| eval: false
 #| include: false
 plot_data <-
-  results_deciles %>%
-  mutate(decile = fe2_decile) %>%
+  results_deciles |>
+  mutate(decile = fe2_decile) |>
   inner_join(link_table, by = c("gvkey", "rdq"),
-             relationship = "many-to-many") %>%
-  inner_join(rets, by = c("rdq", "permno")) %>%
-  unnest(cols = c(data)) %>%
-  group_by(decile, relative_td) %>%
+             relationship = "many-to-many") |>
+  inner_join(rets, by = c("rdq", "permno")) |>
+  unnest(cols = c(data)) |>
+  group_by(decile, relative_td) |>
   summarize(ar = mean(ret - decret, na.rm = TRUE),
               .groups = "drop") 
 ``` 
@@ -458,18 +457,18 @@ plot_data <-
 #| fig-cap: Pre-announcement returns
 #| eval: false
 #| echo: false
-plot_data %>%
-  filter(relative_td <= 0) %>%
-  filter(!is.na(decile)) %>%
-  mutate(decile = as.factor(decile)) %>%
+plot_data |>
+  filter(relative_td <= 0) |>
+  filter(!is.na(decile)) |>
+  mutate(decile = as.factor(decile)) |>
   mutate(first_day = relative_td == min(relative_td),
          last_day = relative_td == max(relative_td),
          ar = if_else(first_day, 0, ar),
-         label = if_else(last_day, as.character(decile), NA_character_)) %>%
-  select(-first_day) %>%
-  group_by(decile) %>%
-  arrange(relative_td) %>%
-  mutate(car = cumsum(ar)) %>%
+         label = if_else(last_day, as.character(decile), NA_character_)) |>
+  select(-first_day) |>
+  group_by(decile) |>
+  arrange(relative_td) |>
+  mutate(car = cumsum(ar)) |>
   ggplot(aes(x = relative_td, y = car, 
              group = decile, color = decile)) + 
   geom_line() +
@@ -483,17 +482,17 @@ plot_data %>%
 #| output: asis
 #| eval: false
 #| echo: false
-plot_data %>%
-  filter(relative_td >= 0) %>%
-  filter(!is.na(decile)) %>%
-  mutate(decile = as.factor(decile)) %>%
+plot_data |>
+  filter(relative_td >= 0) |>
+  filter(!is.na(decile)) |>
+  mutate(decile = as.factor(decile)) |>
   mutate(first_day = relative_td == min(relative_td),
          last_day = relative_td == max(relative_td),
          ar = if_else(first_day, 0, ar),
-         label = if_else(last_day, as.character(decile), NA_character_)) %>%
-  group_by(decile) %>%
-  arrange(relative_td) %>%
-  mutate(car = cumsum(ar)) %>%
+         label = if_else(last_day, as.character(decile), NA_character_)) |>
+  group_by(decile) |>
+  arrange(relative_td) |>
+  mutate(car = cumsum(ar)) |>
   ggplot(aes(x = relative_td, y = car, group = decile, color = decile)) + 
   geom_line() +
   geom_label(aes(label = label), na.rm = TRUE) +

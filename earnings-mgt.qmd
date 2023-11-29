@@ -60,30 +60,30 @@ In which periods would  $\mathit{PART}$ be set to one in @Jones:1991vx?
 #| cache: true
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
-company <- tbl(pg, sql("SELECT * FROM comp.company"))
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+company <- tbl(pg, Id(schema = "comp", table = "company"))
 
 sics <- 
-  company %>%
-  select(gvkey, sic) %>%
+  company |>
+  select(gvkey, sic) |>
   mutate(sic = as.integer(sic))
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") %>%
-  left_join(sics, by = "gvkey") %>%
+         consol == "C", popsrc == "D") |>
+  left_join(sics, by = "gvkey") |>
   mutate(sic = coalesce(sich, sic))
 
 acc_data_raw <-
-  funda_mod %>% 
+  funda_mod |> 
   filter(!is.na(at),
          pddur == 12,
-         !between(sic, 6000, 6999)) %>%
-  mutate(across(c(che, dlc, sale, rect), ~ coalesce(., 0))) %>%
+         !between(sic, 6000, 6999)) |>
+  mutate(across(c(che, dlc, sale, rect), ~ coalesce(., 0))) |>
   select(gvkey, datadate, fyear, at, ib, dp, rect, ppegt, ni, sale,
-         act, che, lct, dlc, sic) %>%
-  filter(between(fyear, 1950, 1991)) %>%
+         act, che, lct, dlc, sic) |>
+  filter(between(fyear, 1950, 1991)) |>
   collect()
 
 dbDisconnect(pg)
@@ -95,17 +95,17 @@ dbDisconnect(pg)
 #| include: false 
 #| cache: true
 calc_accruals <- function(df) {
-  df %>% 
-    group_by(gvkey) %>%
-    arrange(datadate) %>%
+  df |> 
+    group_by(gvkey) |>
+    arrange(datadate) |>
     mutate(lag_at = lag(at),
            d_ca = act - lag(act),
            d_cash = che - lag(che),
            d_cl = lct - lag(lct),
            d_std = dlc - lag(dlc),
            d_rev = sale - lag(sale),
-           d_rec = rect - lag(rect)) %>%
-    ungroup() %>%
+           d_rec = rect - lag(rect)) |>
+    ungroup() |>
     mutate(acc_raw =  (d_ca - d_cash - d_cl + d_std) - dp)
 }
 ```
@@ -117,13 +117,13 @@ calc_accruals <- function(df) {
 #| cache: true
 #| dependson: calc_accruals, acc_data_raw
 test_sample <-
-  acc_data_raw %>%
-  calc_accruals() %>%
+  acc_data_raw |>
+  calc_accruals() |>
   filter(lag_at > 0, sale > 0, ppegt > 0, !is.na(acc_raw), 
-         !is.na(d_rev), !is.na(d_rec), !is.na(ppegt)) %>% 
-  group_by(gvkey) %>%
-  filter(n() >= 11) %>%
-  ungroup() %>%
+         !is.na(d_rev), !is.na(d_rec), !is.na(ppegt)) |> 
+  group_by(gvkey) |>
+  filter(n() >= 11) |>
+  ungroup() |>
   select(gvkey, fyear)
 ```
 
@@ -136,23 +136,23 @@ test_sample <-
 set.seed(2022)
 
 sample_1_firm_years <- 
-  test_sample %>%
-  mutate(rand = rnorm(n = nrow(.))) %>%
-  group_by(gvkey) %>%
-  filter(rand == min(rand), fyear > min(fyear)) %>%
-  ungroup() %>%
-  top_n(1000, wt = rand) %>%
-  select(gvkey, fyear) %>%
+  test_sample |>
+  mutate(rand = rnorm(n = nrow(pick(everything())))) |>
+  group_by(gvkey) |>
+  filter(rand == min(rand), fyear > min(fyear)) |>
+  ungroup() |>
+  top_n(1000, wt = rand) |>
+  select(gvkey, fyear) |>
   mutate(part = TRUE)
 
 sample_1 <-
-  test_sample %>%
-  semi_join(sample_1_firm_years, by = "gvkey") %>%
-  left_join(sample_1_firm_years, by = c("gvkey", "fyear")) %>%
+  test_sample |>
+  semi_join(sample_1_firm_years, by = "gvkey") |>
+  left_join(sample_1_firm_years, by = c("gvkey", "fyear")) |>
   mutate(part = coalesce(part, FALSE))
 
 merged_sample_1 <-
-  sample_1 %>%
+  sample_1 |>
   inner_join(acc_data_raw, by = c("gvkey", "fyear"))
 ```
 
@@ -165,27 +165,27 @@ merged_sample_1 <-
 get_nda <- function(df) {
   
   df_mod <- 
-    df %>%
-    calc_accruals() %>%
+    df |>
+    calc_accruals() |>
     mutate(sic2 = substr(as.character(sic), 1, 2),
            acc_at = acc_raw/lag_at,
            one_at = 1/lag_at,
            d_rev_at = d_rev/lag_at,
            d_rev_alt_at = (d_rev - d_rec)/lag_at,
-           ppe_at = ppegt/lag_at) %>%
-    group_by(sic2) %>%
-    mutate(acc_ind = median(if_else(part, NA, acc_at), na.rm = TRUE)) %>%
+           ppe_at = ppegt/lag_at) |>
+    group_by(sic2) |>
+    mutate(acc_ind = median(if_else(part, NA, acc_at), na.rm = TRUE)) |>
     ungroup()
   
   da_healy <-
-    df_mod %>%
-    group_by(gvkey) %>%
-    arrange(fyear) %>%
+    df_mod |>
+    group_by(gvkey) |>
+    arrange(fyear) |>
     mutate(nda_healy = mean(if_else(part, NA, acc_at), na.rm = TRUE),
            da_healy = acc_at - nda_healy,
            nda_deangelo = lag(acc_at),
-           da_deangelo = acc_at - nda_deangelo) %>%
-    ungroup() %>%
+           da_deangelo = acc_at - nda_deangelo) |>
+    ungroup() |>
     select(gvkey, fyear, part, nda_healy, da_healy, nda_deangelo,
            da_deangelo)
 
@@ -193,48 +193,48 @@ get_nda <- function(df) {
     fm <- lm(acc_at ~ one_at + d_rev_at + ppe_at - 1, 
              data = df, model = FALSE, subset = !part)
     
-    df %>% 
+    df |> 
       mutate(nda_jones = predict(fm, newdata = df),
-             da_jones = acc_at - nda_jones) %>%
+             da_jones = acc_at - nda_jones) |>
       select(fyear, nda_jones, da_jones)
   }
 
   df_jones <-
-    df_mod %>%
-    nest_by(gvkey) %>%
+    df_mod |>
+    nest_by(gvkey) |>
     reframe(fit_jones(data)) 
     
   fit_mod_jones <- function(df) {
     fm <- lm(acc_at ~ one_at + d_rev_alt_at + ppe_at - 1, 
              data = df, model = FALSE, subset = !part)
-    df %>% 
+    df |> 
       mutate(nda_mod_jones = predict(fm, newdata = df),
-             da_mod_jones = acc_at - nda_mod_jones) %>%
+             da_mod_jones = acc_at - nda_mod_jones) |>
       select(fyear, nda_mod_jones, da_mod_jones)
   }         
 
   df_mod_jones <-
-    df_mod %>%
-    nest_by(gvkey) %>%
+    df_mod |>
+    nest_by(gvkey) |>
     reframe(fit_mod_jones(data))
   
   fit_industry <- function(df) {
     fm <- lm(acc_at ~ acc_ind, data = df, model = FALSE, subset = !part)
     
-    df %>% 
+    df |> 
       mutate(nda_industry = suppressWarnings(predict(fm, newdata = df)),
-             da_industry = acc_at - nda_industry) %>%
+             da_industry = acc_at - nda_industry) |>
       select(fyear, nda_industry, da_industry)
   }     
   
   df_industry <-
-    df_mod %>%
-    nest_by(gvkey) %>%
+    df_mod |>
+    nest_by(gvkey) |>
     reframe(fit_industry(data))
     
-  da_healy %>%
-    left_join(df_jones, by = c("gvkey", "fyear")) %>%
-    left_join(df_mod_jones, by = c("gvkey", "fyear")) %>%
+  da_healy |>
+    left_join(df_jones, by = c("gvkey", "fyear")) |>
+    left_join(df_mod_jones, by = c("gvkey", "fyear")) |>
     left_join(df_industry, by = c("gvkey", "fyear"))
 }
 ```
@@ -257,11 +257,11 @@ reg_data <- get_nda(merged_sample_1)
 #| include: false 
 #| cache: true
 fit_model <- function(df, measure = "healy") {
-  df %>%
-    nest_by(gvkey) %>% 
+  df |>
+    nest_by(gvkey) |> 
     summarize(model = list(lm(as.formula(paste0("da_", measure, " ~ part")),
                               model = FALSE, data = data)), 
-              .groups = "drop") %>%
+              .groups = "drop") |>
     mutate(measure = !!measure)
 }
 
@@ -290,9 +290,9 @@ results <- multi_fit(reg_data)
 #| results: asis
 #| tbl-cap: "Results of tests of earning management: Sample 1"
 get_stats <- function(fm) {
-  fm %>%
-    tidy() %>%
-    filter(term == "partTRUE") %>% 
+  fm |>
+    tidy() |>
+    filter(term == "partTRUE") |> 
     select(-term)
 }
 
@@ -304,12 +304,12 @@ table_1_stats <- function(x) {
          q3 = quantile(x, p = 0.75, na.rm = TRUE))
 }
 
-results %>%
-  mutate(stats = map(model, get_stats)) %>% 
-  unnest_wider(stats) %>% 
-  pivot_longer(estimate:statistic, names_to = "stat") %>%
-  group_by(measure, stat) %>%
-  summarize(table_1_stats(value), .groups = "drop") %>%
+results |>
+  mutate(stats = map(model, get_stats)) |> 
+  unnest_wider(stats) |> 
+  pivot_longer(estimate:statistic, names_to = "stat") |>
+  group_by(measure, stat) |>
+  summarize(table_1_stats(value), .groups = "drop") |>
   kable(digits = 3)
 ```
 
@@ -337,7 +337,7 @@ h_test <- function(fm) {
 }
 
 test_results <-
-  results %>% 
+  results |> 
   mutate(map_dfr(model, h_test)) 
 ```
 
@@ -350,9 +350,9 @@ test_results <-
 #| output: asis
 #| label: tbl-table-2
 #| tbl-cap: "Type I error rates"
-test_results %>%
-  group_by(measure) %>%
-  summarize(across(matches("p0"), ~ mean(., na.rm = TRUE))) %>%
+test_results |>
+  group_by(measure) |>
+  summarize(across(matches("p0"), ~ mean(., na.rm = TRUE))) |>
   kable(digits = 3)
 ```   
 
@@ -375,12 +375,12 @@ binom_test <- function(x, p) {
   binom.test(sum(x), length(x), p = p)$p.value
 }  
 
-test_results %>%
-  group_by(measure) %>%
+test_results |>
+  group_by(measure) |>
   summarize(neg_p01 = binom_test(neg_p01, p = 0.01),
             neg_p05 = binom_test(neg_p05, p = 0.05),
             pos_p01 = binom_test(pos_p01, p = 0.01),
-            pos_p05 = binom_test(pos_p05, p = 0.05)) %>%
+            pos_p05 = binom_test(pos_p05, p = 0.05)) |>
   kable(digits = 3)
 ```
 
@@ -391,35 +391,35 @@ test_results %>%
 #| eval: true 
 #| include: false 
 earn_deciles <- 
-  acc_data_raw %>% 
-  semi_join(test_sample, by = c("gvkey", "fyear")) %>%
-  group_by(gvkey) %>%
-  arrange(fyear) %>%
-  mutate(earn = ib/lag(at)) %>% 
-  ungroup() %>% 
-  mutate(earn_dec = form_deciles(earn)) %>%
+  acc_data_raw |> 
+  semi_join(test_sample, by = c("gvkey", "fyear")) |>
+  group_by(gvkey) |>
+  arrange(fyear) |>
+  mutate(earn = ib/lag(at)) |> 
+  ungroup() |> 
+  mutate(earn_dec = form_deciles(earn)) |>
   select(gvkey, fyear, earn_dec)
 
 sample_2_firm_years <- 
-  earn_deciles %>%
-  filter(earn_dec == 10) %>%
-  select(gvkey, fyear) %>%
-  mutate(rand = rnorm(n = nrow(.))) %>%
-  group_by(gvkey) %>%
-  filter(rand == min(rand), fyear > min(fyear)) %>%
-  ungroup() %>%
-  top_n(1000, wt = rand) %>%
-  select(gvkey, fyear) %>%
+  earn_deciles |>
+  filter(earn_dec == 10) |>
+  select(gvkey, fyear) |>
+  mutate(rand = rnorm(n = nrow(pick(everything())))) |>
+  group_by(gvkey) |>
+  filter(rand == min(rand), fyear > min(fyear)) |>
+  ungroup() |>
+  top_n(1000, wt = rand) |>
+  select(gvkey, fyear) |>
   mutate(part = TRUE)
 
 sample_2 <-
-  test_sample %>%
-  semi_join(sample_2_firm_years, by = "gvkey") %>%
-  left_join(sample_2_firm_years, by = c("gvkey", "fyear")) %>%
+  test_sample |>
+  semi_join(sample_2_firm_years, by = "gvkey") |>
+  left_join(sample_2_firm_years, by = c("gvkey", "fyear")) |>
   mutate(part = coalesce(part, FALSE))
 
 merged_sample_2 <-
-  sample_2 %>%
+  sample_2 |>
   inner_join(acc_data_raw, by = c("gvkey", "fyear"))
 ```
 
@@ -477,28 +477,28 @@ If not, are there "one-stage" equivalents to the Healy Model and DeAngelo Model 
 #| include: false
 manipulate <- function(df, level = 0, type) {
   df <-
-    df %>%
-    group_by(gvkey) %>%
-    arrange(datadate) %>%
+    df |>
+    group_by(gvkey) |>
+    arrange(datadate) |>
     mutate(ni_ratio = median(if_else(part, NA, ni/sale), na.rm = TRUE),
            lag_at = lag(at),
            manip_amt = lag_at * level,
            manip_amt_gross = manip_amt/ni_ratio)
             
   if (type == "expense") {
-    df %>% 
-      mutate(lct = if_else(part, lct - manip_amt, lct)) %>%
+    df |> 
+      mutate(lct = if_else(part, lct - manip_amt, lct)) |>
       ungroup()
   } else if (type == "revenue") {
-    df %>% 
+    df |> 
       mutate(sale = case_when(part ~ sale + manip_amt, 
                               lag(part) ~ sale - manip_amt,
                               TRUE ~ sale),
              rect = if_else(part, rect + manip_amt, rect),
-             act = if_else(part, act + manip_amt, act)) %>%
+             act = if_else(part, act + manip_amt, act)) |>
       ungroup()
   } else if (type == "margin") {
-    df %>% 
+    df |> 
       mutate(sale = case_when(part & ni_ratio > 0 ~ 
                                 sale + manip_amt_gross,
                               lag(part) & ni_ratio > 0 ~ 
@@ -509,10 +509,10 @@ manipulate <- function(df, level = 0, type) {
              act = if_else(part & ni_ratio > 0, 
                            act + manip_amt_gross, act),
              lct = if_else(part & ni_ratio > 0, 
-                           lct + manip_amt_gross - manip_amt, lct)) %>%
+                           lct + manip_amt_gross - manip_amt, lct)) |>
       ungroup()
   } else {
-    df %>%
+    df |>
       ungroup()
   }
 }
@@ -526,11 +526,11 @@ manipulate <- function(df, level = 0, type) {
 #| dependson: manipulate, merged_sample, get_nda, multi_fit
 manip_df <-
   expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) %>%
+              manip_type = c("expense", "revenue", "margin")) |>
   mutate(data = map2(level, manip_type, 
-                     ~ manipulate(merged_sample_1, .x, .y))) %>%
-  mutate(accruals = map(data, get_nda)) %>%
-  mutate(results = map(accruals, ~ multi_fit(.x))) %>%
+                     ~ manipulate(merged_sample_1, .x, .y))) |>
+  mutate(accruals = map(data, get_nda)) |>
+  mutate(results = map(accruals, ~ multi_fit(.x))) |>
   select(-data, -accruals)  
 ```
 
@@ -548,7 +548,7 @@ manip_fit <- function(df, level, manip_type) {
 #| include: false
 manip_df <-
   expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) %>%
+              manip_type = c("expense", "revenue", "margin")) |>
   mutate(results = map2(level, manip_type,
                         ~ manip_fit(merged_sample_1, .x, .y))) 
 ```
@@ -564,7 +564,7 @@ future::plan(multisession, workers = 8)
 
 manip_df <-
   expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) %>%
+              manip_type = c("expense", "revenue", "margin")) |>
   mutate(results = future_map2(level, manip_type,
                                ~ manip_fit(merged_sample_1, .x, .y)))
 ```
@@ -579,11 +579,11 @@ future::plan(multisession, workers = 8)
 
 manip_df <-
   expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) %>%
+              manip_type = c("expense", "revenue", "margin")) |>
   mutate(data = future_map2(level, manip_type,
-                            ~ manipulate(merged_sample_1, .x, .y))) %>%
-  mutate(accruals = future_map(data, get_nda)) %>%
-  mutate(results = future_map(accruals, ~ multi_fit(.x))) %>%
+                            ~ manipulate(merged_sample_1, .x, .y))) |>
+  mutate(accruals = future_map(data, get_nda)) |>
+  mutate(results = future_map(accruals, ~ multi_fit(.x))) |>
   select(-data, -accruals)
 ```
 
@@ -612,10 +612,10 @@ h_test_5 <- function(fm) {
 #| dependson: manip_df, h-test-5
 #| label: power-plot-data
 power_plot_data <-
-  manip_df %>% 
-  unnest(results) %>% 
-  group_by(level, manip_type, measure) %>% 
-  mutate(reject_null = map_lgl(model, h_test_5)) %>%
+  manip_df |> 
+  unnest(results) |> 
+  group_by(level, manip_type, measure) |> 
+  mutate(reject_null = map_lgl(model, h_test_5)) |>
   summarize(prop_reject = mean(reject_null, na.rm = TRUE),
             .groups = "drop")
 ```
@@ -630,10 +630,10 @@ library(furrr)
 future::plan(multisession, workers = 8)
 
 power_plot_data <-
-  manip_df %>% 
-  unnest(results) %>% 
-  group_by(level, manip_type, measure) %>% 
-  mutate(reject_null = future_map_lgl(model, h_test_5)) %>%
+  manip_df |> 
+  unnest(results) |> 
+  group_by(level, manip_type, measure) |> 
+  mutate(reject_null = future_map_lgl(model, h_test_5)) |>
   summarize(prop_reject = mean(reject_null, na.rm = TRUE),
             .groups = "drop")
 ```
@@ -643,7 +643,7 @@ power_plot_data <-
 #| include: false
 #| label: power
 #| fig.cap: Power functions for tests of earnings management
-power_plot_data %>%
+power_plot_data |>
   ggplot(aes(x = level, y = prop_reject)) +
   geom_line() +
   facet_grid(measure ~ manip_type)

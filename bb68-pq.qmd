@@ -98,102 +98,102 @@ funda <- load_parquet(db, "funda", "comp")
 fundq <- load_parquet(db, "fundq", "comp")
 
 fundq_mod <-
-  fundq %>%
+  fundq |>
   filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") %>%
-  filter(fqtr == 4, fyr == 12, !is.na(rdq)) %>%
-  select(gvkey, datadate, rdq) %>%
+         consol == "C", popsrc == "D") |>
+  filter(fqtr == 4, fyr == 12, !is.na(rdq)) |>
+  select(gvkey, datadate, rdq) |>
   mutate(rdq_month = as.Date(floor_date(rdq, unit = "month"))) |>
   compute()
 
 crsp_dates <-
-  msi %>%
-  select(date) %>%
-  window_order(date) %>%
-  mutate(td = row_number()) %>%
+  msi |>
+  select(date) |>
+  window_order(date) |>
+  mutate(td = row_number()) |>
   mutate(month = as.Date(floor_date(date, unit = "month"))) |>
   compute()
 
 td_link <-
-  crsp_dates %>%
-  select(month, td) %>% 
-  rename(rdq_td = td, rdq_month = month) %>%
-  mutate(td = generate_series(rdq_td - 11L, rdq_td + 6L)) %>%
+  crsp_dates |>
+  select(month, td) |> 
+  rename(rdq_td = td, rdq_month = month) |>
+  mutate(td = generate_series(rdq_td - 11L, rdq_td + 6L)) |>
   mutate(td = unnest(td)) |>
-  inner_join(crsp_dates, by = "td") %>%
-  mutate(rel_td = td - rdq_td) %>%
+  inner_join(crsp_dates, by = "td") |>
+  mutate(rel_td = td - rdq_td) |>
   select(rdq_month, rel_td, date) |>
   compute()
 
 ccm_link <-
-  ccmxpf_lnkhist %>%
+  ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) %>%
-  rename(permno = lpermno) %>%
+         linkprim %in% c("C", "P")) |>
+  rename(permno = lpermno) |>
   select(gvkey, permno, linkdt, linkenddt) |>
   compute()
 
 rets_all <-
-  fundq_mod %>% 
-  inner_join(td_link, by = "rdq_month") %>%
-  inner_join(ccm_link, by = "gvkey") %>%
-  filter(rdq_month >= linkdt, rdq_month <= linkenddt | is.na(linkenddt)) %>%
-  inner_join(msf, by = c("permno", "date")) %>%
-  inner_join(stocknames, by = "permno") %>%
+  fundq_mod |> 
+  inner_join(td_link, by = "rdq_month") |>
+  inner_join(ccm_link, by = "gvkey") |>
+  filter(rdq_month >= linkdt, rdq_month <= linkenddt | is.na(linkenddt)) |>
+  inner_join(msf, by = c("permno", "date")) |>
+  inner_join(stocknames, by = "permno") |>
   filter(between(date, namedt, nameenddt),
-         exchcd %in% c(1, 2, 3)) %>%
-  select(gvkey, datadate, rel_td, permno, date, ret) %>%
-  filter(between(year(datadate), 1987L, 2002L)) %>%
+         exchcd %in% c(1, 2, 3)) |>
+  select(gvkey, datadate, rel_td, permno, date, ret) |>
+  filter(between(year(datadate), 1987L, 2002L)) |>
   compute()
 
 full_panel <-
-  rets_all %>% 
-  group_by(gvkey, datadate) %>% 
-  mutate(n_obs = n()) %>% 
-  ungroup() %>% 
-  filter(n_obs == max(n_obs)) %>%
+  rets_all |> 
+  group_by(gvkey, datadate) |> 
+  mutate(n_obs = n()) |> 
+  ungroup() |> 
+  filter(n_obs == max(n_obs)) |>
   select(gvkey, datadate) |>
   compute()
 
 rets <-
-  rets_all %>%
+  rets_all |>
   semi_join(full_panel, by = c("gvkey", "datadate")) 
 
 me_values <- 
-  msf %>% 
-  mutate(mktcap = abs(prc) * shrout/1000.0) %>% 
-  select(permno, date, mktcap) %>%
-  mutate(month = as.Date(floor_date(date, unit = "month"))) %>%
-  filter(month(month) == 12) %>%
+  msf |> 
+  mutate(mktcap = abs(prc) * shrout/1000.0) |> 
+  select(permno, date, mktcap) |>
+  mutate(month = as.Date(floor_date(date, unit = "month"))) |>
+  filter(month(month) == 12) |>
   compute()
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D") 
 
 news <-
-  funda_mod %>%
-  filter(fyr == 12) %>%
-  group_by(gvkey) %>%
-  window_order(datadate) %>%
+  funda_mod |>
+  filter(fyr == 12) |>
+  group_by(gvkey) |>
+  window_order(datadate) |>
   mutate(lag_ibc = lag(ibc),
          lag_oancf = lag(oancf),
          lag_at = lag(at),
-         lag_fyear = lag(fyear)) %>%
+         lag_fyear = lag(fyear)) |>
   filter(between(fyear, 1987, 2002),
-         lag_fyear + 1 == fyear) %>%
+         lag_fyear + 1 == fyear) |>
   mutate(earn_chg = if_else(lag_at > 0, (ibc - lag_ibc)/lag_at, NA_real_),
          cfo_chg = if_else(lag_at > 0, (oancf - lag_oancf)/lag_at, NA_real_),
          earn_gn = earn_chg > 0,
-         cfo_gn = cfo_chg > 0) %>%
-  filter(!is.na(cfo_gn), !is.na(earn_gn)) %>%
-  ungroup() %>%
-  select(gvkey, datadate, earn_chg, cfo_chg, earn_gn, cfo_gn) %>%
-  group_by(datadate) %>% 
+         cfo_gn = cfo_chg > 0) |>
+  filter(!is.na(cfo_gn), !is.na(earn_gn)) |>
+  ungroup() |>
+  select(gvkey, datadate, earn_chg, cfo_chg, earn_gn, cfo_gn) |>
+  group_by(datadate) |> 
   mutate(earn_decile = ntile(earn_chg, 10),
-         cfo_decile = ntile(cfo_chg, 10)) %>%
-  ungroup() %>%
+         cfo_decile = ntile(cfo_chg, 10)) |>
+  ungroup() |>
   compute()
 ```
 
@@ -226,34 +226,34 @@ read_data <- function(start, end) {
   read_csv(t, skip = start, n_max = end - start,
            na = c("-99.99"),
            name_repair = fix_names,
-           show_col_types = FALSE) %>%
-    mutate(month = ymd(paste0(date, "01"))) %>%
-    select(-date) %>%
+           show_col_types = FALSE) |>
+    mutate(month = ymd(paste0(date, "01"))) |>
+    select(-date) |>
     pivot_longer(names_to = "quantile",
                  values_to = "ret",
-                 cols = -month) %>%
+                 cols = -month) |>
     mutate(ret = ret / 100,
            decile = case_when(quantile == "Hi 10" ~ "10",
                               quantile == "Lo 10" ~ "1",
                               grepl("^Dec ", quantile) ~
                                 sub("^Dec ", "", quantile),
                               TRUE ~ NA_character_),
-           decile = as.integer(decile)) %>%
-    filter(!is.na(decile)) %>%
+           decile = as.integer(decile)) |>
+    filter(!is.na(decile)) |>
     select(-quantile)
 }
 
 vw_rets <- 
-  read_data(vw_start, vw_end) %>%
+  read_data(vw_start, vw_end) |>
   rename(vw_ret = ret)
 
 ew_rets <- 
-  read_data(ew_start, ew_end) %>%
+  read_data(ew_start, ew_end) |>
   rename(ew_ret = ret)
 
 size_rets <-
-  ew_rets %>%
-  inner_join(vw_rets, by = c("month", "decile")) %>%
+  ew_rets |>
+  inner_join(vw_rets, by = c("month", "decile")) |>
   select(month, decile, everything()) |>
   copy_to(db, df = _, name = "size_rets")
 ```
@@ -273,22 +273,22 @@ me_breakpoints_raw <-
            col_names = c("month", "n",
                          paste0("p", seq(from = 5, to = 100, by = 5))),
            col_types = "c",
-           n_max = grep("^Copyright", temp) - 3) %>%
-  mutate(month = ymd(paste0(month, "01"))) %>%
-  select(-ends_with("5"), -n) %>%
+           n_max = grep("^Copyright", temp) - 3) |>
+  mutate(month = ymd(paste0(month, "01"))) |>
+  select(-ends_with("5"), -n) |>
   pivot_longer(cols = - month,
                names_to = "decile",
-               values_to = "cutoff") %>%
-  mutate(decile = gsub("^p(.*)0$", "\\1", decile)) %>%
+               values_to = "cutoff") |>
+  mutate(decile = gsub("^p(.*)0$", "\\1", decile)) |>
   mutate(decile = as.integer(decile)) 
 
 me_breakpoints <-
-  me_breakpoints_raw %>%
-  group_by(month) %>% 
-  arrange(decile) %>% 
-  mutate(me_min = coalesce(lag(cutoff), 0), me_max = cutoff) %>% 
-  mutate(me_max = if_else(decile == 10, Inf, me_max)) %>%
-  select(-cutoff) %>%
+  me_breakpoints_raw |>
+  group_by(month) |> 
+  arrange(decile) |> 
+  mutate(me_min = coalesce(lag(cutoff), 0), me_max = cutoff) |> 
+  mutate(me_max = if_else(decile == 10, Inf, me_max)) |>
+  select(-cutoff) |>
   arrange(month, decile) |>
   copy_to(db, df = _, name = "me_breakpoints")
 ```
@@ -296,24 +296,24 @@ me_breakpoints <-
 ```{r}
 #| include: false
 me_decile_assignments <-
-  me_breakpoints %>%
-  inner_join(me_values, by = "month") %>%
-  ungroup() %>%
-  mutate(dec_match = mktcap >= me_min & mktcap < me_max) %>%
-  filter(dec_match) %>%
-  mutate(year = as.integer(year(date)) + 1L) %>%
+  me_breakpoints |>
+  inner_join(me_values, by = "month") |>
+  ungroup() |>
+  mutate(dec_match = mktcap >= me_min & mktcap < me_max) |>
+  filter(dec_match) |>
+  mutate(year = as.integer(year(date)) + 1L) |>
   select(permno, year, decile) 
 ```
 
 ```{r}
 #| include: false
 merged <- 
-  news %>%
-  mutate(year = year(datadate)) %>%
-  inner_join(rets, by = c("gvkey", "datadate")) %>%
-  inner_join(me_decile_assignments, by = c("permno", "year")) %>%
-  mutate(month = floor_date(date, unit = "month")) %>%
-  inner_join(size_rets, by = c("decile", "month")) %>%
+  news |>
+  mutate(year = year(datadate)) |>
+  inner_join(rets, by = c("gvkey", "datadate")) |>
+  inner_join(me_decile_assignments, by = c("permno", "year")) |>
+  mutate(month = floor_date(date, unit = "month")) |>
+  inner_join(size_rets, by = c("decile", "month")) |>
   select(-permno, -month) |>
   compute()
 ```
@@ -321,21 +321,21 @@ merged <-
 ```{r}
 #| include: false
 plot_data <-
-  merged %>% 
-  filter(!is.na(ret)) %>%
-  group_by(gvkey, datadate) %>%
-  window_order(rel_td) %>%
-  mutate(across(ends_with("ret"), ~ exp(cumsum(log(1 + .x))))) %>%
-  group_by(rel_td, earn_gn) %>% 
+  merged |> 
+  filter(!is.na(ret)) |>
+  group_by(gvkey, datadate) |>
+  window_order(rel_td) |>
+  mutate(across(ends_with("ret"), ~ exp(cumsum(log(1 + .x))))) |>
+  group_by(rel_td, earn_gn) |> 
   summarize(across(ends_with("ret"), ~ mean(.x, na.rm = TRUE)),
-            .groups = "drop") %>%
+            .groups = "drop") |>
   mutate(aret_ew = ret - ew_ret, aret_vw = ret - ew_ret) |>
   compute()
 ```
 
 ```{r}
 #| echo: false
-plot_data %>%
+plot_data |>
   ggplot(aes(x = rel_td, y = aret_ew, line = earn_gn)) +
   geom_line()
 ```
@@ -345,9 +345,9 @@ plot_data %>%
 ```{r}
 #| include: false
 max_cutoff <-
-  me_breakpoints_raw %>% 
-  filter(month == "2020-12-01", decile == 10) %>%
-  select(cutoff) %>%
+  me_breakpoints_raw |> 
+  filter(month == "2020-12-01", decile == 10) |>
+  select(cutoff) |>
   pull()
 ```
 
@@ -358,7 +358,7 @@ How can we reconcile this with the existence of firms with market capitalization
 Why do we need to group by `permco` instead of `permno` to find the answer?)
 
 ```{r}
-me_breakpoints_raw %>% 
+me_breakpoints_raw |> 
   filter(month == "2020-12-01")
 ```
 
@@ -371,12 +371,12 @@ me_breakpoints_raw %>%
 
 msf <- load_parquet(db, "msf", "crsp")
 
-msf %>% 
-  filter(date == "2020-12-31") %>%
-  mutate(mktcap = abs(prc) * shrout/1000.0) %>%
-  group_by(permco, date) %>%
-  mutate(totmktcap = sum(mktcap, na.rm = TRUE)) %>%
-  select(permno, permco, date, mktcap, totmktcap) %>%
+msf |> 
+  filter(date == "2020-12-31") |>
+  mutate(mktcap = abs(prc) * shrout/1000.0) |>
+  group_by(permco, date) |>
+  mutate(totmktcap = sum(mktcap, na.rm = TRUE)) |>
+  select(permno, permco, date, mktcap, totmktcap) |>
   arrange(totmktcap)
 ```
 

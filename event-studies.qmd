@@ -76,6 +76,7 @@ apple_reg_data <-
 apple_reg_data |>  
   arrange(date) |>
   mutate(cumret = cumprod(1 + coalesce(ret, 0))) |>
+  filter(date >= "2020-09-01", date <= "2020-12-31") |>
   ggplot(aes(x = date, y = cumret)) +
   geom_line() +
   geom_area(mapping = aes(y = if_else(!is_event, cumret, 0),

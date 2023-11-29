@@ -167,8 +167,8 @@ get_data <- function(add_perc = 0.03, n_years = 20) {
 set.seed(2021)
 df_1000 <- get_data(n_years = 1000)
 
-df_1000 %>%
-  filter(year <= 20) %>%
+df_1000 |>
+  filter(year <= 20) |>
   ggplot(aes(x = year)) + 
   geom_line(aes(y = sales), colour = "red") +
   geom_line(aes(y = mean(sales)), colour = "blue")
@@ -190,10 +190,10 @@ res_df <- bind_rows(res_list, .id = "id")
 #| dependson: res_df
 get_coefs <- function(df) {
     fm <- 
-        df %>%
-        arrange(year) %>% 
-        mutate(lag_ni = dplyr::lag(ni)) %>%
-        lm(ni ~ lag_ni, data = .)
+        df |>
+        arrange(year) |> 
+        mutate(lag_ni = dplyr::lag(ni)) |>
+        lm(ni ~ lag_ni, data = _)
     tibble(add_perc = mean(df$add_perc), 
            persistence = fm$coefficients[2])
 }
@@ -203,7 +203,7 @@ results <- bind_rows(lapply(res_list, get_coefs), .id = "id")
 
 ```{r}
 #| include: false
-results %>%
+results |>
   ggplot(aes(x = add_perc, y = persistence)) +
   geom_point()
 ```
@@ -240,41 +240,42 @@ pg <- dbConnect(RPostgres::Postgres(),
                 bigint = "integer", 
                 check_interrupts = TRUE)
 
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
-company <- tbl(pg, sql("SELECT * FROM comp.company"))
-ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist"))
-msf <- tbl(pg, sql("SELECT * FROM crsp.msf"))
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+company <- tbl(pg, Id(schema = "comp", table = "company"))
+ccmxpf_lnkhist <- tbl(pg, Id(schema = "crsp", 
+                             table = "ccmxpf_lnkhist"))
+msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
 
 sics <- 
-  company %>%
+  company |>
   select(gvkey, sic)
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") %>%
-  left_join(sics) %>%
+         consol == "C", popsrc == "D") |>
+  left_join(sics) |>
   mutate(sic = coalesce(sich, as.integer(sic)))
 
 acc_data_raw <-
-  funda_mod %>% 
+  funda_mod |> 
   filter(!is.na(at),
          pddur == 12, 
-         exchg %in% c(11L, 12L)) %>%
+         exchg %in% c(11L, 12L)) |>
   mutate(finance = between(sic, 6000, 6999),
-         across(c(che, dlc, txp), ~ coalesce(., 0))) %>%
-  group_by(gvkey) %>%
-  window_order(datadate) %>%
+         across(c(che, dlc, txp), ~ coalesce(., 0))) |>
+  group_by(gvkey) |>
+  window_order(datadate) |>
   mutate(avg_at = (at + lag(at))/2,
          d_ca = act - lag(act),
          d_cash = che - lag(che),
          d_cl = lct - lag(lct),
          d_std = dlc - lag(dlc),
-         d_tp = txp - lag(txp)) %>%
+         d_tp = txp - lag(txp)) |>
   select(gvkey, datadate, fyear, avg_at, at, oiadp, dp, finance,
-         starts_with("d_"), sic, pddur) %>%
-  mutate(acc_raw =  (d_ca - d_cash) - (d_cl - d_std - d_tp) - dp) %>%
-  ungroup() %>%
+         starts_with("d_"), sic, pddur) |>
+  mutate(acc_raw =  (d_ca - d_cash) - (d_cl - d_std - d_tp) - dp) |>
+  ungroup() |>
   filter(between(fyear, 1962, 1991),
          avg_at > 0)
 
@@ -291,34 +292,34 @@ form_deciles <- function(x) {
 }
 
 acc_data <- 
-  acc_data_raw %>%
+  acc_data_raw |>
   mutate(earn = oiadp/avg_at,
          acc = acc_raw/avg_at,
-         cfo = earn - acc) %>%
-  group_by(gvkey) %>%
-  window_order(datadate) %>%
-  mutate(lead_earn = lead(earn)) %>%
-  ungroup() %>% 
-  collect() %>%
+         cfo = earn - acc) |>
+  group_by(gvkey) |>
+  window_order(datadate) |>
+  mutate(lead_earn = lead(earn)) |>
+  ungroup() |> 
+  collect() |>
   mutate(acc_decile = form_deciles(acc),
          earn_decile = form_deciles(earn),
          cfo_decile = form_deciles(cfo),
          lead_earn_decile = form_deciles(lead_earn),
-         sic2 = substr(as.character(sic), 1, 2)) %>% 
+         sic2 = substr(as.character(sic), 1, 2)) |> 
   filter(!finance, !is.na(acc))  
 
 ccm_link <-
-    ccmxpf_lnkhist %>%
+    ccmxpf_lnkhist |>
     filter(linktype %in% c("LC", "LU", "LS"),
            linkprim %in% c("C", "P")) 
 
 crsp_link <-
-  acc_data_raw %>%
-  select(gvkey, datadate) %>%
-  inner_join(ccm_link, by = "gvkey") %>%
-  filter(between(datadate, linkdt, linkenddt)) %>%
-  select(gvkey, datadate, lpermno) %>%
-  rename(permno = lpermno) %>% 
+  acc_data_raw |>
+  select(gvkey, datadate) |>
+  inner_join(ccm_link, by = "gvkey") |>
+  filter(between(datadate, linkdt, linkenddt)) |>
+  select(gvkey, datadate, lpermno) |>
+  rename(permno = lpermno) |> 
   mutate(start_month = as.Date(date_trunc('month', 
                                           datadate + sql("interval '4 months'"))),
          end_month = as.Date(date_trunc('month', 
@@ -326,28 +327,28 @@ crsp_link <-
                              - sql("interval '1 day'")))
 
 crsp_data <-
-  crsp_link %>%
-  inner_join(msf, by = "permno") %>%
-  filter(between(date, start_month, end_month)) %>%
-  group_by(gvkey, permno, datadate) %>%
+  crsp_link |>
+  inner_join(msf, by = "permno") |>
+  filter(between(date, start_month, end_month)) |>
+  group_by(gvkey, permno, datadate) |>
   summarize(ret = exp(sum(log(1 + ret), na.rm = TRUE)) - 1,
             n_months = n(),
-            .groups = "drop") %>%
+            .groups = "drop") |>
   collect()
 
 crsp_dates <-
-  msf %>%
-  select(date) %>%
-  distinct() %>%
+  msf |>
+  select(date) |>
+  distinct() |>
   mutate(month = as.Date(date_trunc('month', date)))
 
 me_values <- 
-  crsp_link %>% 
-  mutate(month = as.Date(date_trunc('month', datadate))) %>%
-  inner_join(crsp_dates, by = "month") %>%
-  inner_join(msf, by = c("permno", "date")) %>%
-  mutate(mktcap = abs(prc) * shrout/1000.0) %>% 
-  select(permno, datadate, month, mktcap) %>%
+  crsp_link |> 
+  mutate(month = as.Date(date_trunc('month', datadate))) |>
+  inner_join(crsp_dates, by = "month") |>
+  inner_join(msf, by = c("permno", "date")) |>
+  mutate(mktcap = abs(prc) * shrout/1000.0) |> 
+  select(permno, datadate, month, mktcap) |>
   collect()
 ```
 
@@ -368,9 +369,9 @@ me_breakpoints <- get_me_breakpoints()
 ```{r}
 #| include: false 
 me_decile_assignments <-
-  me_breakpoints %>%
+  me_breakpoints |>
   inner_join(me_values, 
-             join_by(month, me_min <= mktcap, me_max > mktcap)) %>%
+             join_by(month, me_min <= mktcap, me_max > mktcap)) |>
   select(permno, datadate, decile) 
 ```
 
@@ -378,14 +379,14 @@ me_decile_assignments <-
 ```{r}
 #| include: false
 cum_size_rets <-
-  me_decile_assignments %>%
-  select(datadate, decile) %>%
-  distinct() %>%
+  me_decile_assignments |>
+  select(datadate, decile) |>
+  distinct() |>
   mutate(start_month = datadate %m+% months(4),
-         end_month =  datadate %m+% months(16)) %>%
+         end_month =  datadate %m+% months(16)) |>
   inner_join(size_rets, 
-             join_by(decile, start_month <= month, end_month >= month)) %>%
-  group_by(datadate, decile) %>%
+             join_by(decile, start_month <= month, end_month >= month)) |>
+  group_by(datadate, decile) |>
   summarize(ew_ret = exp(sum(log(1 + ew_ret), na.rm = TRUE)) - 1,
             vw_ret = exp(sum(log(1 + vw_ret), na.rm = TRUE)) - 1,
             n_size_months = n(),
@@ -395,26 +396,26 @@ cum_size_rets <-
 ```{r}
 #| include: false
 size_adj_rets <-
-  crsp_data %>%
-  inner_join(me_decile_assignments, by = c("permno", "datadate")) %>%
-  inner_join(cum_size_rets, by = c("datadate", "decile")) %>%
-  mutate(size_adj_ret = ret - vw_ret) %>%
+  crsp_data |>
+  inner_join(me_decile_assignments, by = c("permno", "datadate")) |>
+  inner_join(cum_size_rets, by = c("datadate", "decile")) |>
+  mutate(size_adj_ret = ret - vw_ret) |>
   select(gvkey, datadate, size_adj_ret, n_months, n_size_months)
 ```
 
 ```{r}
 #| include: false
 reg_data <-
-  acc_data %>%
+  acc_data |>
   inner_join(size_adj_rets, by = c("gvkey", "datadate"))
 ```
 
 ```{r}
 #| echo: false
 #| include: false
-reg_data %>%
-  group_by(acc_decile) %>% 
-  summarize(across(c(acc, earn, cfo), ~ mean(., na.rm = TRUE))) %>%
+reg_data |>
+  group_by(acc_decile) |> 
+  summarize(across(c(acc, earn, cfo), ~ mean(., na.rm = TRUE))) |>
   knitr::kable(digits = 3)
 ```
 
@@ -433,7 +434,7 @@ stargazer(fms, type = sg_format, header = FALSE)
 #| include: false
 run_table_ind <- function(sic2, lhs = "lead_earn", rhs = "earn") {
   df <- 
-    reg_data %>% 
+    reg_data |> 
     filter(sic2 == !!sic2)
   
   fm <- lm(as.formula(paste0(lhs, " ~ ", rhs)), data = df)
@@ -452,12 +453,12 @@ stats_for_table <- function(x) {
 }
  
 summ_for_table <- function(lhs = "lead_earn", rhs = "earn") {
-  unique(reg_data$sic2) %>% 
-    lapply(run_table_ind, lhs = lhs, rhs = rhs) %>%
-    bind_rows() %>%
-    select(-sic2) %>% 
-    lapply(., stats_for_table) %>%
-    bind_rows() %>%
+  unique(reg_data$sic2) |> 
+    lapply(run_table_ind, lhs = lhs, rhs = rhs) |>
+    bind_rows() |>
+    select(-sic2) |> 
+    lapply(X = _, stats_for_table) |>
+    bind_rows() |>
     knitr::kable(digits = 3) 
 }
 ```
@@ -543,12 +544,12 @@ What do you observe?
 ```{r}
 #| eval: false
 sim_reg_data <-
-  res_df %>%
-  mutate(cfo = [PUT CALC HERE], acc = [PUT CALC HERE]) %>%
-  group_by(id) %>%
-  arrange(id, year) %>%
+  res_df |>
+  mutate(cfo = [PUT CALC HERE], acc = [PUT CALC HERE]) |>
+  group_by(id) |>
+  arrange(id, year) |>
   mutate(lag_cfo = lag(cfo),
-         lag_acc = lag(acc)) %>%
+         lag_acc = lag(acc)) |>
   ungroup()
 ```
 
@@ -564,41 +565,41 @@ Given the other analysis above, is H1 true in our simulated data?
 year_of_event <- 10
 
 decile_data <-
-  sim_reg_data %>%
-  filter(year == year_of_event) %>%
+  sim_reg_data |>
+  filter(year == year_of_event) |>
   mutate(cfo_decile = form_deciles(cfo),
          ni_decile = form_deciles(ni),
-         acc_decile = form_deciles(acc)) %>%
+         acc_decile = form_deciles(acc)) |>
   select(id, ends_with("decile")) 
 
 reg_data_deciles <-
-  sim_reg_data %>%
+  sim_reg_data |>
   inner_join(decile_data, by = "id")
 
-reg_data_deciles %>% 
-  filter(ni_decile %in% c(1, 10)) %>%
+reg_data_deciles |> 
+  filter(ni_decile %in% c(1, 10)) |>
   mutate(ni_decile = as.factor(ni_decile),
-         event_year = year - year_of_event) %>%
-  group_by(ni_decile, year) %>%
-  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+         event_year = year - year_of_event) |>
+  group_by(ni_decile, year) |>
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") |>
   ggplot(aes(x = year, y = ni, group= ni_decile, color = ni_decile)) +
   geom_line()
 
-reg_data_deciles %>% 
-  filter(cfo_decile %in% c(1, 10)) %>%
+reg_data_deciles |> 
+  filter(cfo_decile %in% c(1, 10)) |>
   mutate(cfo_decile = as.factor(cfo_decile),
-         event_year = year - year_of_event) %>%
-  group_by(cfo_decile, year) %>%
-  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+         event_year = year - year_of_event) |>
+  group_by(cfo_decile, year) |>
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") |>
   ggplot(aes(x = year, y = ni, group = cfo_decile, color = cfo_decile)) +
   geom_line()
 
-reg_data_deciles %>% 
-  filter(acc_decile %in% c(1, 10)) %>%
+reg_data_deciles |> 
+  filter(acc_decile %in% c(1, 10)) |>
   mutate(acc_decile = as.factor(acc_decile),
-         event_year = year - year_of_event) %>%
-  group_by(acc_decile, year) %>%
-  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") %>%
+         event_year = year - year_of_event) |>
+  group_by(acc_decile, year) |>
+  summarize(ni = mean(ni, na.rm = TRUE), .groups = "drop") |>
   ggplot(aes(x = year, y = ni, group = acc_decile, color = acc_decile)) +
   geom_line()
 ```
@@ -608,11 +609,11 @@ reg_data_deciles %>%
 ```{r}
 #| include: false
 fm <-
-  reg_data %>% 
-  group_by(fyear, acc_decile) %>%
-  summarize(size_adj_ret = mean(size_adj_ret, na.rm = TRUE), .groups = "drop") %>%
-  mutate(acc_decile = as.factor(acc_decile)) %>%
-  lm(size_adj_ret ~ acc_decile - 1, data = .)
+  reg_data |> 
+  group_by(fyear, acc_decile) |>
+  summarize(size_adj_ret = mean(size_adj_ret, na.rm = TRUE), .groups = "drop") |>
+  mutate(acc_decile = as.factor(acc_decile)) |>
+  lm(size_adj_ret ~ acc_decile - 1, data = _)
 ```
 
 ```{r}

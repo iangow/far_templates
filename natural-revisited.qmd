@@ -233,7 +233,7 @@ What challenges would such a process face?
 #| include: false
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
 
 compustat_annual <-
   funda |>

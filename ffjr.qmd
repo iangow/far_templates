@@ -76,11 +76,11 @@ dsedist <- tbl(pg, "dsedist")
 ```{r}
 #| include: false
 splits <-
-  dsedist %>%
+  dsedist |>
   filter(exdt >= "1927-01-01", exdt <= "1959-12-31",
          distcd %in% c(5523L, 5533L),
-         facshr >= 0.25) %>%
-  mutate(split = TRUE) %>%
+         facshr >= 0.25) |>
+  mutate(split = TRUE) |>
   select(permno, split, exdt, facshr) 
 ```
 
@@ -88,38 +88,38 @@ splits <-
 ```{r}
 #| include: false
 nyse_stocks <-
-  stocknames %>%
+  stocknames |>
   filter(exchcd == 1,
-         substr(as.character(shrcd), 1L, 1L) == "1") %>%
+         substr(as.character(shrcd), 1L, 1L) == "1") |>
   select(permno, namedt, nameenddt) 
 ```
 
 ```{r}
 #| include: false
 nyse_splits_raw <-
-  splits %>%
-  inner_join(nyse_stocks, by = "permno") %>%
+  splits |>
+  inner_join(nyse_stocks, by = "permno") |>
   filter(exdt >= namedt, exdt <= nameenddt) 
 ```  
 
 ```{r}
 #| include: false
 month_indexes <-
-  msi %>%
-  mutate(month = as.Date(date_trunc('month', date))) %>%
-  window_order(month) %>%
-  mutate(month_index = row_number()) %>%
+  msi |>
+  mutate(month = as.Date(date_trunc('month', date))) |>
+  window_order(month) |>
+  mutate(month_index = row_number()) |>
   select(date, month, month_index)
 ```
   
 ```{r nyse_splits}
 #| include: false
 nyse_splits <-
-  nyse_splits_raw %>%
-  mutate(month = as.Date(date_trunc('month', exdt))) %>%
-  inner_join(month_indexes, by = "month") %>%
-  rename(ex_month_index = month_index) %>%
-  select(-namedt, -nameenddt, -date) %>%
+  nyse_splits_raw |>
+  mutate(month = as.Date(date_trunc('month', exdt))) |>
+  inner_join(month_indexes, by = "month") |>
+  rename(ex_month_index = month_index) |>
+  select(-namedt, -nameenddt, -date) |>
   collect()
 ```
 
@@ -128,12 +128,12 @@ We construct `nyse_msf`, which is essentially `crsp.msf` restricted to NYSE stoc
 ```{r nyse_msf}
 #| include: false
 nyse_msf <-
-  msf %>%
-  filter(!is.na(ret)) %>%
-  inner_join(nyse_stocks, by = "permno") %>%
-  filter(between(date, namedt, nameenddt)) %>%
-  inner_join(month_indexes, by = "date") %>%
-  select(permno, month_index, date, ret) %>%
+  msf |>
+  filter(!is.na(ret)) |>
+  inner_join(nyse_stocks, by = "permno") |>
+  filter(between(date, namedt, nameenddt)) |>
+  inner_join(month_indexes, by = "date") |>
+  select(permno, month_index, date, ret) |>
   collect()
 ```
 
@@ -143,93 +143,93 @@ We create a variable (`month_rel_ex`) that measures the number of months between
 ```{r}
 #| include: false
 split_return_data <-
-  nyse_splits %>%
-  left_join(nyse_msf, by = "permno") %>%
-  mutate(month_rel_ex = month_index - ex_month_index) %>%
+  nyse_splits |>
+  left_join(nyse_msf, by = "permno") |>
+  mutate(month_rel_ex = month_index - ex_month_index) |>
   select(permno, exdt, date, ret, month_rel_ex)
 ```
 
 ```{r}
 #| include: false
 split_sample <-
-  split_return_data %>%
-  filter(between(month_rel_ex, -12, 12)) %>%
-  group_by(permno, exdt) %>%
-  summarize(n_obs = n(), .groups = "drop") %>%
-  filter(n_obs == 25L) %>%
+  split_return_data |>
+  filter(between(month_rel_ex, -12, 12)) |>
+  group_by(permno, exdt) |>
+  summarize(n_obs = n(), .groups = "drop") |>
+  filter(n_obs == 25L) |>
   select(permno, exdt)
 
 split_returns <-
-  split_return_data %>%
+  split_return_data |>
   semi_join(split_sample, by = c("permno")) 
 ```
 
 ```{r}
 #| include: false
-split_sample %>% distinct(permno) %>% count()
-split_sample %>% count()
+split_sample |> distinct(permno) |> count()
+split_sample |> count()
 ```
 
 ```{r}
 #| include: false
 index_returns <-
-  msi %>%
-  select(date, vwretd, ewretd) %>%
+  msi |>
+  select(date, vwretd, ewretd) |>
   collect()
 ```
 
 ```{r}
 #| include: false
 omit_returns <-
-  split_returns %>%
-  mutate(exclude = between(month_rel_ex, -15, 0)) %>%
-  group_by(permno, date) %>%
+  split_returns |>
+  mutate(exclude = between(month_rel_ex, -15, 0)) |>
+  group_by(permno, date) |>
   summarize(exclude = any(exclude), .groups = "drop")
 ```
 
 ```{r}
 #| include: false
 split_returns_reg <-
-  split_returns %>%
-  inner_join(omit_returns, by = c("permno", "date")) %>%
-  select(permno, date, ret, exclude) %>%
+  split_returns |>
+  inner_join(omit_returns, by = c("permno", "date")) |>
+  select(permno, date, ret, exclude) |>
   distinct() 
 ```
 
 ```{r}
 #| include: false
 abnormal_returns <-
-  split_returns_reg %>%
-  left_join(index_returns, by = "date") %>%
+  split_returns_reg |>
+  left_join(index_returns, by = "date") |>
   mutate(lpr = log(1 + ret),
-         lm = log(1 + vwretd)) %>%
-  select(permno, date, lpr, lm, exclude) %>%
-  nest(data = !permno) %>%
+         lm = log(1 + vwretd)) |>
+  select(permno, date, lpr, lm, exclude) |>
+  nest(data = !permno) |>
   mutate(fit = map(data, ~ lm(lpr ~ lm, data = ., subset = !exclude,
-                              na.action = "na.exclude"))) %>%
-  mutate(predicted = map2(fit, data, ~ predict(.x, newdata = .y))) %>%
-  unnest(cols = c(predicted, data)) %>%
-  mutate(resid = lpr - predicted) %>%
+                              na.action = "na.exclude"))) |>
+  mutate(predicted = map2(fit, data, ~ predict(.x, newdata = .y))) |>
+  unnest(cols = c(predicted, data)) |>
+  mutate(resid = lpr - predicted) |>
   select(permno, date, resid)
 ```
 
 ```{r}
 #| include: false
 table2_data <-
-  abnormal_returns %>%
-  inner_join(collect(month_indexes), by = "date") %>%
-  left_join(nyse_splits, by = "permno") %>%
-  mutate(month_gap = month_index - ex_month_index) %>%
+  abnormal_returns |>
+  inner_join(collect(month_indexes), by = "date") |>
+  left_join(nyse_splits, by = "permno") |>
+  mutate(month_gap = month_index - ex_month_index) |>
   filter(abs(month_gap) <= 30)
 ```
 
 ```{r}
 #| include: false
-table2_data %>%
-  group_by(month_gap) %>%
-  summarize(all_u = mean(resid), .groups = "drop") %>%
-  arrange(month_gap) %>%
-  mutate(all_U = cumsum(all_u)) %>%
+table2_data |>
+  group_by(month_gap) |>
+  summarize(all_u = mean(resid), .groups = "drop") |>
+  arrange(month_gap) |>
+  mutate(all_U = cumsum(all_u)) |>
   ggplot(aes(x = month_gap, y = all_U)) +
   geom_point()
 ```
@@ -239,10 +239,10 @@ table2_data %>%
 ```{r}
 #| include: false
 div_months <-
-  dsedist %>%
-  filter(substr(as.character(distcd), 1L, 1L) == "1") %>%
-  mutate(month = as.Date(date_trunc('month', exdt))) %>%
-  group_by(permno, month) %>%
+  dsedist |>
+  filter(substr(as.character(distcd), 1L, 1L) == "1") |>
+  mutate(month = as.Date(date_trunc('month', exdt))) |>
+  group_by(permno, month) |>
   summarize(divamt = sum(divamt, na.rm = TRUE), .groups = "drop")
 ```
 
@@ -250,90 +250,90 @@ div_months <-
 ```{r nyse_divs_raw}
 #| include: false
 nyse_divs_raw <-
-  msf %>%
-  inner_join(nyse_stocks, by = "permno") %>%
-  filter(between(date, namedt, nameenddt)) %>%
-  mutate(month = as.Date(date_trunc('month', date))) %>%
-  select(permno, date, month, cfacshr) %>%
-  left_join(div_months, by = c("permno", "month")) %>%
-  mutate(divamt = coalesce(divamt/cfacshr, 0)) %>%
+  msf |>
+  inner_join(nyse_stocks, by = "permno") |>
+  filter(between(date, namedt, nameenddt)) |>
+  mutate(month = as.Date(date_trunc('month', date))) |>
+  select(permno, date, month, cfacshr) |>
+  left_join(div_months, by = c("permno", "month")) |>
+  mutate(divamt = coalesce(divamt/cfacshr, 0)) |>
   select(permno, month, divamt)
 ```
 
 ```{r nyse_divs}
 #| include: false
 nyse_divs <-
-  nyse_divs_raw %>%
-  group_by(permno) %>%
-  window_order(month) %>%
-  window_frame(from = -11, to = 0) %>%
+  nyse_divs_raw |>
+  group_by(permno) |>
+  window_order(month) |>
+  window_frame(from = -11, to = 0) |>
   mutate(div_trailing = sum(divamt, na.rm = TRUE),
-         mths_trailing = sum(1, na.rm = TRUE)) %>%
-  window_frame(from = 1, to = 12) %>%
+         mths_trailing = sum(1, na.rm = TRUE)) |>
+  window_frame(from = 1, to = 12) |>
   mutate(div_forward = sum(divamt, na.rm = TRUE),
-         mths_forward = sum(1, na.rm = TRUE)) %>%
-  filter(mths_trailing == 12, mths_forward == 12) %>%
-  ungroup() %>%
-  select(permno, month, div_trailing, div_forward) %>%
+         mths_forward = sum(1, na.rm = TRUE)) |>
+  filter(mths_trailing == 12, mths_forward == 12) |>
+  ungroup() |>
+  select(permno, month, div_trailing, div_forward) |>
   collect()
 ```
 
 ```{r split_firm_dividends}
 #| include: false
 split_firm_dividends <-
-  nyse_splits %>%
-  left_join(nyse_divs, by = c("permno", "month")) %>%
+  nyse_splits |>
+  left_join(nyse_divs, by = c("permno", "month")) |>
   mutate(div_ratio = if_else(div_trailing > 0, div_forward/div_trailing,
-                             NA_real_)) %>%
-  filter(!is.na(div_ratio)) %>%
+                             NA_real_)) |>
+  filter(!is.na(div_ratio)) |>
   select(permno, month, exdt, div_ratio) 
 ```
 
 ```{r}
 #| include: false
 div_mkt <-
-  nyse_divs %>% 
-  group_by(month) %>% 
+  nyse_divs |> 
+  group_by(month) |> 
   summarize(div_trailing = mean(div_trailing, na.rm = TRUE),
             div_forward = mean(div_forward, na.rm = TRUE),
-            .groups = "drop") %>%
+            .groups = "drop") |>
   mutate(mkt_div_ratio = if_else(div_trailing > 0, div_forward/div_trailing,
                                  NA_real_))
 
 dividends_file <-
-  split_firm_dividends %>%
-  inner_join(div_mkt, by = "month") %>%
-  select(permno, exdt, div_ratio, mkt_div_ratio) %>% 
+  split_firm_dividends |>
+  inner_join(div_mkt, by = "month") |>
+  select(permno, exdt, div_ratio, mkt_div_ratio) |> 
   mutate(up_div = div_ratio >= mkt_div_ratio)
 ```
 
 ```{r}
 #| include: false
 table2_w_divs <- 
-  table2_data %>%
+  table2_data |>
   left_join(dividends_file, by = c("permno", "exdt"))
 ```
 
 ```{r}
 #| include: false
-table2_w_divs %>%
-  filter(up_div) %>%
-  group_by(month_gap) %>%
-  summarize(u = mean(resid), .groups = "drop") %>%
-  arrange(month_gap) %>%
-  mutate(U = cumsum(u)) %>%
+table2_w_divs |>
+  filter(up_div) |>
+  group_by(month_gap) |>
+  summarize(u = mean(resid), .groups = "drop") |>
+  arrange(month_gap) |>
+  mutate(U = cumsum(u)) |>
   ggplot(aes(x = month_gap, y = U)) +
   geom_point()
 ```
 
 ```{r}
 #| include: false
-table2_w_divs %>%
-  filter(!up_div) %>%
-  group_by(month_gap) %>%
-  summarize(u = mean(resid), .groups = "drop") %>%
-  arrange(month_gap) %>%
-  mutate(U = cumsum(u)) %>%
+table2_w_divs |>
+  filter(!up_div) |>
+  group_by(month_gap) |>
+  summarize(u = mean(resid), .groups = "drop") |>
+  arrange(month_gap) |>
+  mutate(U = cumsum(u)) |>
   ggplot(aes(x = month_gap, y = U)) +
   geom_point()
 ```
