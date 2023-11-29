@@ -1,0 +1,90 @@
+---
+title: "Template for 'Capital markets research in accounting'"
+author: Your name
+format: html
+---
+
+```{r}
+#| message: false
+#| include: false
+library(dplyr, warn.conflicts = FALSE)
+library(DBI)
+library(ggplot2)
+library(lubridate) # For floor_date function
+```
+
+## The CRSP database
+
+```{r}
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+dsf <- tbl(pg, Id(schema = "crsp", table = "dsf"))
+dsi <- tbl(pg, Id(schema = "crsp", table = "dsi"))
+msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
+msi <- tbl(pg, Id(schema = "crsp", table = "msi"))
+```
+
+### Exercises
+
+1. If you look at the stock tables (`crsp.dsf` and `crsp.msf`), you will see that `prc` can be negative on either table.
+Do negative stock prices make sense economically speaking?
+What do negative stock prices on CRSP mean? 
+(CRSP documentation can be found [here](https://wrds-www.wharton.upenn.edu/pages/support/manuals-and-overviews/crsp/stocks-and-indices/overview-crsp-us-stock-database/#dataset-organization).)
+What would be some alternative approaches to encode this information? 
+(Write code to recast the data using one of these approaches.)
+Why do you think that CRSP chose the approach used?
+
+2. How do `ret` and `retx` differ?
+Which variable are you more likely to use in research?
+
+3. Looking at the `date` variable on `crsp.msf`, is it always the last day of the month?
+If not, why not?
+
+4. Suggest the "natural" primary key for these tables.
+Check that this is a primary key for `crsp.msf`.
+
+5. What is being depicted in each of the two plots below?
+What are the sources of variation in the first plot?
+Looking at the plots, what appears to be the main driver of variation in the first plot.
+Create an additional plot to visualize the source of variation in the first not depicted below.
+In the code below, we are using `collect()` followed by `mutate(month = floor_date(date, "month"))` to calculate `month`. 
+What changes in terms of where the processing occurs if we replace these two lines with `mutate(month = as.Date(date_trunc("month", date)))`?
+Do we get different results?
+
+```{r}
+#| echo: false
+plot_data <-
+  dsf |>
+  select(date) |>
+  filter(date >= "2018-01-01", date <= "2020-12-31") |>
+  collect() |>
+  mutate(month = floor_date(date, "month")) 
+
+freqs <-
+  plot_data |>
+  count(month)
+
+freqs |>
+  ggplot(aes(x = month, y = n)) +
+  geom_bar(stat = "identity") +
+  scale_x_date(breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 90))
+
+freqs_alt <-
+  plot_data |>
+  distinct() |>
+  count(month)
+
+freqs_alt |>
+  ggplot(aes(x = month, y = n)) +
+  geom_bar(stat = "identity") +
+  scale_x_date(breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+6. What is the primary key for `crsp.dsi` and `crsp.msi`? Verify that it is a valid key for both tables.
+
+7. Using the `dplyr` verb `anti_join`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
+Do the same for `crsp.msi` and `crsp.msf`.
+
