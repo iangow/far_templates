@@ -43,13 +43,13 @@ What does the statement `collect(n = 100)` at the end of this code do?
 funda <- load_parquet(db, "funda", "comp")
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") %>%
+         consol == "C", popsrc == "D") |>
   filter(fyear >= 1980)
 
 funda_mod_alt <-
-  funda_mod %>%
+  funda_mod |>
   collect(n = 100)
 ```
 
@@ -61,11 +61,11 @@ Why do we end up with just two rows?
 company <- load_parquet(db, "company", "comp")
 
 sample <-
-  company %>%
-  select(gvkey, sic) %>%
+  company |>
+  select(gvkey, sic) |>
   mutate(co_name = case_when(gvkey == "001690" ~ "Apple",
                              gvkey == "012141" ~ "Microsoft",
-         TRUE ~ NA_character_)) %>%
+         TRUE ~ NA_character_)) |>
   filter(!is.na(co_name))
 ```
 
@@ -76,11 +76,11 @@ Why do you think we want `filter(gvkey != gvkey_other)`?
 
 ```{r}
 another_sample <-
-  company %>%
-  select(gvkey, sic) %>%
-  inner_join(sample, by = "sic", suffix = c("", "_other")) %>%
-  filter(gvkey != gvkey_other) %>%
-  mutate(group = paste(co_name, "peer")) %>%
+  company |>
+  select(gvkey, sic) |>
+  inner_join(sample, by = "sic", suffix = c("", "_other")) |>
+  filter(gvkey != gvkey_other) |>
+  mutate(group = paste(co_name, "peer")) |>
   select(gvkey, group)
 ```
 
@@ -88,9 +88,9 @@ another_sample <-
 
 ```{r}
 total_sample <-
-  sample %>%
-  rename(group = co_name) %>%
-  select(gvkey, group) %>%
+  sample |>
+  rename(group = co_name) |>
+  select(gvkey, group) |>
   union_all(another_sample)
 ```
 
@@ -102,12 +102,12 @@ What happens if we omit it?
 
 ```{r}
 xrd_at <-
-  funda_mod %>%
-  select(gvkey, datadate, fyear, conm, xrd, at) %>%
-  filter(at > 0) %>%
+  funda_mod |>
+  select(gvkey, datadate, fyear, conm, xrd, at) |>
+  filter(at > 0) |>
   mutate(rd_intensity = xrd/at,
          xrd_alt = coalesce(xrd, 0),
-         rd_intensity_alt = xrd_alt/at) %>%
+         rd_intensity_alt = xrd_alt/at) |>
   inner_join(total_sample, by = "gvkey") 
 ```
 
@@ -118,18 +118,18 @@ Or would you say "it depends"?
 
 ```{r}
 xrd_at_sum <-
-  xrd_at %>%
-  group_by(group, fyear) %>%
+  xrd_at |>
+  group_by(group, fyear) |>
   summarize(total_at = sum(at, na.rm = TRUE),
             total_rd = sum(xrd, na.rm = TRUE),
             rd_intensity1 = mean(xrd/at, na.rm = TRUE),
             rd_intensity2 = mean(xrd_alt/at, na.rm = TRUE),
-            .groups = "drop") %>%
-  mutate(rd_intensity3 = if_else(total_at > 0, total_rd/total_at, NA_real_)) %>%
+            .groups = "drop") |>
+  mutate(rd_intensity3 = if_else(total_at > 0, total_rd/total_at, NA_real_)) |>
   collect()
   
-xrd_at_sum %>%
-  select(-total_at, -total_rd) %>%
+xrd_at_sum |>
+  select(-total_at, -total_rd) |>
   arrange(desc(fyear), group)
 ```
 

@@ -21,11 +21,11 @@ library(ggplot2)
 #| include: false 
 pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
-company <- tbl(pg, sql("SELECT * FROM comp.company"))
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+company <- tbl(pg, Id(schema = "comp", table = "company"))
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D")
 ```
@@ -37,8 +37,8 @@ funda_mod <-
 ```{r}
 #| include: false
 na_sample_firm_years <-
-  funda_mod %>%
-  filter(gvkey == "008902", datadate >= "2000-01-01") %>%
+  funda_mod |>
+  filter(gvkey == "008902", datadate >= "2000-01-01") |>
   select(gvkey, datadate)
 ```
 
@@ -47,9 +47,9 @@ na_sample_firm_years <-
 tol <- 1e-3
 
 funda_na_fixed <-
-  funda_mod %>%
+  funda_mod |>
   select(gvkey, datadate, act, ppent, ivaeq, ivao, intan, ao, at,
-         dc, aox) %>%
+         dc, aox) |>
   mutate(at_calc = coalesce(act, 0) + coalesce(ppent, 0) + coalesce(ivaeq, 0) + 
            coalesce(ivao, 0) + coalesce(intan, 0) + coalesce(ao, 0),
          at_diff = at_calc - at,
@@ -82,9 +82,9 @@ What's the most significant difference between this case and the one above?
 (*Hint*: The following additional Compustat balancing model may help: `act = che + rect + invt + aco`.)
 
 ```{r}
-funda_na_fixed %>%
-  filter(gvkey=="145003", datadate=="2001-12-31") %>%
-  select(datadate, at, at_calc, at_diff, act, ppent, intan, ivao, ao) %>%
+funda_na_fixed |>
+  filter(gvkey=="145003", datadate=="2001-12-31") |>
+  select(datadate, at, at_calc, at_diff, act, ppent, intan, ivao, ao) |>
   collect()
 ```
 
@@ -95,19 +95,19 @@ funda_na_fixed %>%
 tol <- 0.1
 
 funda_cf_balance <-
-  funda_mod %>%
-  select(gvkey, datadate, oancf, ivncf, fincf, exre, chech, che, ch, ivst) %>%
+  funda_mod |>
+  select(gvkey, datadate, oancf, ivncf, fincf, exre, chech, che, ch, ivst) |>
   mutate(across(oancf:exre, ~ coalesce(., 0)),
          chech_calc = oancf + ivncf + fincf + exre,
-         chech_balance = abs(chech_calc - chech) < tol) %>%
-  filter(chech_calc != 0, chech_balance) %>%
-  group_by(gvkey) %>% 
-  dbplyr::window_order(datadate) %>% 
+         chech_balance = abs(chech_calc - chech) < tol) |>
+  filter(chech_calc != 0, chech_balance) |>
+  group_by(gvkey) |> 
+  dbplyr::window_order(datadate) |> 
   mutate(lag_datadate = lag(datadate),
          d_che = che - lag(che), 
-         d_ch = ch - lag(ch)) %>%
-  ungroup() %>%
-  filter(!is.na(d_che) | !is.na(d_ch)) %>%
+         d_ch = ch - lag(ch)) |>
+  ungroup() |>
+  filter(!is.na(d_che) | !is.na(d_ch)) |>
   mutate(artic_desc = 
            case_when(abs(d_ch - d_che) < tol & abs(chech - d_che) < tol
                         ~ "Articulates (CHE == CH)",
@@ -117,8 +117,8 @@ funda_cf_balance <-
                      abs(chech - d_ch) >= tol   ~ "Does not articulate",
                      TRUE ~ "Other"))
 
-funda_cf_balance %>%
-  count(artic_desc) %>%
+funda_cf_balance |>
+  count(artic_desc) |>
   collect()
 ```
 
@@ -141,18 +141,18 @@ In this section, we discuss @Koh:2015vz, who "investigate whether missing R&D ex
 
 ```{r}
 included_firms <-
-  company %>%
-  mutate(sic = as.integer(sic)) %>%
-  filter(!between(sic, 4900, 4999), !between(sic, 6000, 6999)) %>%
+  company |>
+  mutate(sic = as.integer(sic)) |>
+  filter(!between(sic, 4900, 4999), !between(sic, 6000, 6999)) |>
   select(gvkey)
 
 rd_data <-
-  funda_mod %>%
-  semi_join(included_firms, by = "gvkey") %>%
+  funda_mod |>
+  semi_join(included_firms, by = "gvkey") |>
   mutate(missing_rd = is.na(xrd),
          zero_rd = xrd == 0,
-         year = year(datadate)) %>%
-  select(gvkey, datadate, year, xrd, missing_rd, zero_rd, at) %>%
+         year = year(datadate)) |>
+  select(gvkey, datadate, year, xrd, missing_rd, zero_rd, at) |>
   collect()
 ```
 
