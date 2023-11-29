@@ -35,7 +35,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
-| Capital markets research in accounting | [cap-mkts.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd) | Template to come |
+| Capital markets research in accounting | [cap-mkts.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd) | [cap-mkts-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts-pq.qmd) |
 | FFJR | [ffjr.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd) | [ffjr-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr-pq.qmd) |
 | Ball and Brown (1968) | [bb68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68.qmd) | [bb68-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68-pq.qmd) |
 | Beaver (1968) | [beaver68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68.qmd) |  [beaver68-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68-pq.qmd) |

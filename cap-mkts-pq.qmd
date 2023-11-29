@@ -11,18 +11,19 @@ library(dplyr, warn.conflicts = FALSE)
 library(DBI)
 library(ggplot2)
 library(lubridate) # For floor_date function
+library(farr)
 ```
 
 ## The CRSP database
 
 ```{r}
 #| include: false
-pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+db <- dbConnect(duckdb::duckdb())
 
-dsf <- tbl(pg, Id(schema = "crsp", table = "dsf"))
-dsi <- tbl(pg, Id(schema = "crsp", table = "dsi"))
-msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
-msi <- tbl(pg, Id(schema = "crsp", table = "msi"))
+dsf <- load_parquet(db, "dsf", "crsp")
+dsi <- load_parquet(db, "dsi", "crsp")
+msf <- load_parquet(db, "msf", "crsp")
+msi <- load_parquet(db, "msi", "crsp")
 ```
 
 ### Exercises
@@ -88,3 +89,7 @@ freqs_alt |>
 7. Using the `dplyr` verb `anti_join`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
 Do the same for `crsp.msi` and `crsp.msf`.
 
+```{r}
+#| include: false
+dbDisconnect(db, shutdown = TRUE)
+```
