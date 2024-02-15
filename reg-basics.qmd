@@ -21,15 +21,6 @@ library(kableExtra)    # For kbl()
 
 ```{r}
 #| include: false
-if (knitr::is_latex_output()) {
-  sg_format <- "latex"
-} else {
-  sg_format <- "html"
-}
-```
-
-```{r}
-#| include: false
 test_summ <-
   test_scores |>
   filter(grade %in% 6:7L) |>
