@@ -25,7 +25,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Describing data | [r-intro.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd) | Use PostgreSQL template |
 | Regression fundamentals | [reg-basics.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd) | Use PostgreSQL template |
 | Causal inference | [causal-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd) | Use PostgreSQL template |
-| Statistical inference | Chapter under development | Chapter under development |
+| Statistical inference  | Template to come | Template to come |
 | Financial statements: A first look | [fin-state.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd) | [fin-state-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-pq.qmd) |
 | Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) | 
 | Linking databases | Template to come later | Template to come later
@@ -55,10 +55,14 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) | Template to come |
 | Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | Template to come |
  
-### Part IV: Other topics
+### Part IV: Additional topics
 
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
+| Beyond OLS | Template to come | Template to come |
+| Extreme values and sensitivity analysis | Template to come | Template to come |
+| Matching | Template to come | Template to come |
+| Prediction | Template to come | Template to come |
 
 ### Other files
 
