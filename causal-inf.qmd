@@ -4,26 +4,18 @@ author: Your name
 format: html
 ---
 
-The code in this template uses the following packages.
-
 ```{r}
 #| message: false
+#| echo: false
 library(dplyr, warn.conflicts = FALSE)
 library(ggplot2)
-library(stargazer)
+library(modelsummary)
 ```
-
-We use the `stargazer` package to produce neat output from regressions.
-For the HTML version of this book, we set `sg_format` to `"html"`, but `"text"` would be a better option if looking at the results interactively, and you would probably use `"latex"` if compiling a PDF.
 
 ## Econometrics
 
 ```{r}
-#| message: false
-sg_format <- "html"
-```
-
-```{r}
+#| echo: false
 set.seed(2021)
 
 n <- 100000
@@ -36,26 +28,32 @@ df <- tibble(
 ```
 
 ```{r}
-fms <- list()
-fms[[1]] <- lm(income ~ education, data = df)
-fms[[2]] <- lm(income ~ education + intelligence + industry, data = df)
-fms[[3]] <- lm(income ~ intelligence + industry, data = df)
+#| echo: false
+fms <- list(lm(income ~ education, data = df),
+            lm(income ~ education + intelligence + industry, data = df),
+            lm(income ~ intelligence + industry, data = df))
 ```
 
-The results from these models are presented in the table below.
+The results from models show in the text are presented in @tbl-admissions.
 
 ```{r}
-#| results: asis
 #| message: false
-stargazer(fms, type = sg_format, 
-          header = FALSE, omit.stat = c("ser", "f"))
+#| echo: false
+#| label: tbl-admissions
+#| tbl-cap: "Student admissions: Regression results"
+modelsummary(fms,
+             estimate = "{estimate}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
 ### Exercises
 
 1. Looking at the simulation code, what are the true values of $\beta := \left(\beta_0, \beta_1, \beta_2, \beta_3 \right)$ and $\alpha := \left(\alpha_0, \alpha_1, \alpha_2 \right)$?
-2. Does any one of the three equations provide good estimates of $\beta$?
-3. Consider model (3), with regard to the first of the two equations, are there any issues with regard to estimating $\beta$?
+2. Do any of the three regressions reported in @tbl-admissions provide good estimates of $\beta$?
+3. Consider regression (3) in @tbl-admissions. 
+With regard to the first of the two equations, are there any issues with regard to estimating $\beta$? 
 What (if any) OLS assumption is violated?
 4. What happens if you substitute the second equation (for $x_{i1}$) into the first equation (for $y_i$)? 
 Does this equation satisfy OLS assumptions in some way?
@@ -77,26 +75,29 @@ admissions <- tibble(
   interview = rnorm(n),
   score = test + interview,
   cutoff = quantile(score, .90),
-  admitted = score >=cutoff)
+  admitted = score >= cutoff)
 ```
 
 ```{r}
 #| echo: false
-fms <- list()
-fms[[1]] <- lm(interview ~ test, data = admissions)
-fms[[2]] <- lm(interview ~ test, data = admissions, subset = !admitted)
-fms[[3]] <- lm(interview ~ test, data = admissions, subset = admitted)
-fms[[4]] <- lm(interview ~ test * admitted, data = admissions)
+fms <- list(lm(interview ~ test, data = admissions),
+            lm(interview ~ test, data = admissions, subset = !admitted),
+            lm(interview ~ test, data = admissions, subset = admitted),
+            lm(interview ~ test * admitted, data = admissions))
 ```
 
 The results from these models are presented in the following table.
 
 ```{r}
-#| output: asis
 #| message: false
 #| echo: false
-stargazer(fms, type = sg_format, 
-          header = FALSE, omit.stat = c("ser", "f"))
+#| label: tbl-collider
+#| tbl-cap: Regression with collider variables
+modelsummary(fms,
+             estimate = "{estimate}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
 ### Exercises
@@ -110,9 +111,9 @@ Is this coincidence? Or would we always expect these relations to hold?
 For example, if universities admitted students based on test and interview performance, they probably have good reasons for doing so.
 Can you think of reasons why a university might add test and interview performance into a single score?
 Does your story have implications for the relationship between test and interview performance?
-4. Using `mutate`, create a fourth variable `test_x_admitted` that is the product of `test` and `admitted` and run a version of model (4) above that uses this variable.
-Then regress, `interview` on `test`, `admitted`, and `test_x_admitted`.
-Do you get the same results are are shown above for model (4)?
+4. Using `mutate()`, create a fourth variable `test_x_admitted` that is the product of `test` and `admitted` and run a version of model (4) above that uses this variable.
+That is regress `interview` on `test`, `admitted`, and `test_x_admitted`.
+Do you get the same results as are shown above for model (4) in @tbl-collider?
 Why or why not?
 
 ## Causal diagrams: Formalities
@@ -121,16 +122,15 @@ Why or why not?
 
 1. Draw the DAG for the structural model above relating intelligence, industriousness, education, and income.
 For each $x$ variable, identify the sets of conditioning variables that satisfy the backdoor criterion with respect to estimating a causal effect of the variable on $y$.
-
-2. For any set of conditioning variables not considered in the regression table above, run regressions to confirm that these indeed deliver good estimates of causal effects.
+2. For any valid set of conditioning variables not considered in @tbl-admissions, run regressions to confirm that these indeed deliver good estimates of causal effects..
 
 ## Discrimination and bias
-
 
 ```{r}
 #| echo: false
 n <- 100000
 
+set.seed(2023)
 df <- tibble(
   female = runif(n) >= 0.5,
   discrimination = female,
@@ -138,16 +138,22 @@ df <- tibble(
   salary = 1 - 1 * discrimination + 2 * occupation + rnorm(n) 
 )
 
-lm_1 <- lm(salary ~ female, data = df)
-lm_2 <- lm(salary ~ female + occupation, data = df)
+fms <- list(lm(salary ~ female, data = df),
+            lm(salary ~ female + occupation, data = df))
 ```
 
 ```{r}
 #| echo: false
-#| output: asis
-stargazer(lm_1, lm_2, type = sg_format, 
-          header = FALSE, omit.stat = c("ser", "f"))
+#| label: tbl-discrim
+#| tbl-cap: "Discrimination regressions"
+modelsummary(fms,
+             estimate = "{estimate}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
+
+### Exercises 
 
 1. Given the equations for `occupation` and `salary` in the simulation above, what is the direct effect of discrimination on salary?
 What is the indirect effect (i.e., the effect via `occupation`) of discrimination on salary?
@@ -158,7 +164,7 @@ How do each of these effects show up in the reported regression results?
 2. Consider the possibility of an additional unobserved variable, ability ($A$), that affects role assignment ($O$) and also affects income ($Y$) directly.
 What would be the correct conditioning strategy in this case? 
 Would it now make sense to condition on $O$ if the goal is to estimate the total effect of discrimination on $Y$?
-(*Hint*: In answering this question, it may help to adapt the simulation above to generate an `ability` variable and to incorporate that in the model as follows.) 
+(*Hint*: In answering this question, it may help to adapt the simulation above to generate an `ability` variable and to incorporate that in the model using code like the following.)
 
 ```{r}
 #| include: false
@@ -169,6 +175,7 @@ Would it now make sense to condition on $O$ if the goal is to estimate the total
 
 ```{r}
 #| eval: false
+set.seed(2023)
 ability = rnorm(n),
 occupation = 1 + 0 * female - 2 * discrimination + 2 * ability + rnorm(n),
 salary = 1 - 1 * discrimination + 2 * occupation + 0.3 * ability + rnorm(n)
@@ -178,6 +185,6 @@ salary = 1 - 1 * discrimination + 2 * occupation + 0.3 * ability + rnorm(n)
 
 Given this DAG, is it possible to identify a set of conditioning variables that allow you to estimate the total effect of discrimination on salary?
 What roles does $O$ have in this DAG?
-(*Hint*: Replace the `0` coefficient in the `occupation` equation used in the last question with a value of either `-1` or `+1`. Does the sign of this coefficient affect the sign of bias, if any?)
+(*Hint*: Replace the `0` coefficient on `female` in the `occupation` equation used in the last question with a value of either `-1` or `+1`. Does the sign of this coefficient affect the sign of bias, if any?)
 Is it possible to estimate the *direct* effect of discrimination on salary?
 If so, how? If not, why?
