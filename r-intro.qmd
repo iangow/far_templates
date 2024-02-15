@@ -1,5 +1,5 @@
 ---
-title: "Solutions to 'Describing data' exercises"
+title: "Describing data"
 author: "Your name here"
 format: html
 ---
