@@ -159,6 +159,7 @@ fm_aux <- lm(ta ~ size, data = aux_data)
 ```
 
 ```{r}
+#| include: false
 #| label: fig-aux-all
 #| fig-cap: "Illustration of FWL: Total accruals and size"
 aux_data |>
