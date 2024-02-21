@@ -13,10 +13,10 @@ format:
 library(dplyr, warn.conflicts = FALSE)
 library(ggplot2)
 library(farr)
-library(fixest)
 library(modelsummary)
-library(tidyr)         # For pivot_wider()
-library(kableExtra)    # For kbl()
+library(tidyr)         # pivot_wider()
+library(kableExtra)    # kbl()
+library(fixest)        # feols()
 ```
 
 ```{r}
@@ -62,7 +62,10 @@ test_scores_demean <-
   
 fm_demean <- lm(score ~ treat * post, 
                 data = test_scores_demean, x = TRUE)
+```
 
+```{r}
+#| include: false
 modelsummary(fm_demean, 
              estimate = "{estimate}{stars}",
              coef_omit = "^factor",
@@ -77,9 +80,9 @@ modelsummary(fm_demean,
 1. In using `pivot_wider()` in Chapter 2, we supplied a value to the `id_cols` argument, but we omitted that in creating `test_summ`.
 If we wanted to be explicit, what value would we need to provide for that argument in the code creating `test_summ`?
 
-2.  What is the relation between the means in the table produced from `mean_by_grade` and the regression coefficients in `fm_grade`?
+2. What is the relation between the means in the table produced from `mean_by_grade` and the regression coefficients in `fm_grade`?
 
-3.  Why is there no estimated coefficient for `factor(grade)5` in `fm_grade`? (*Hint:* See previous question.)
+3. Why is there no estimated coefficient for `factor(grade)5` in `fm_grade`?
 
 4. Now let's return to our earlier regression specification, except this time we include fixed effects for `grade` (see code and output below).
 
@@ -99,7 +102,7 @@ summary(fm_dd_fe)
 ```
 </ul>
 
-5.  In words, what are we doing to create `test_scores_demean`? 
+5.  In words, what are we doing to create `test_scores_demean`?
 Intuitively, why might this affect the need to use fixed effects?
 
 6.  Let's explore the regression stored in `fm_demean` above? 
@@ -111,7 +114,7 @@ All of them? Some of them? None of them?
 test_scores_demean |> 
   group_by(grade, treat) |> 
   summarize(score = mean(score), .groups = "drop") |>
-  kbl()
+  kbl(booktabs = TRUE, digits = 3)
 ```
 
 7.  The `feols()` function from the `fixest` package offers a succinct syntax for adding fixed effects and uses computationally efficient algorithms (much like our demeaning approach above) in estimating these. \indexc{feols()}
@@ -122,7 +125,6 @@ What is the `I()` function doing here?
 What happens if we omit it (i.e., just include `post * treat`)?
 
 ```{r}
-#| echo: false
 #| label: tbl-feols
 #| tbl-cap: "Regressions results using `feols()`"
 fefm <- feols(score ~ I(post * treat) | grade + id, data = test_scores)
@@ -141,10 +143,38 @@ fm <- lm(ta ~ big_n + cfo + size + lev + mtb +
          data = comp, na.action = na.exclude)
 ```
 
+```{r}
+#| include: false
+fm_aux_size <- lm(size ~ big_n + cfo + lev + mtb + 
+                    factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
+                  data = comp, na.action = na.exclude)
+
+fm_aux_ta <- lm(ta ~ big_n + cfo + lev + mtb + 
+                  factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
+                data = comp, na.action = na.exclude)
+
+aux_data <- tibble(size = resid(fm_aux_size),
+                  ta = resid(fm_aux_ta))
+fm_aux <- lm(ta ~ size, data = aux_data)
+```
+
+```{r}
+#| label: fig-aux-all
+#| fig-cap: "Illustration of FWL: Total accruals and size"
+aux_data |>
+  filter(!is.na(size), !is.na(ta)) |>
+  ggplot(aes(x = size, y = ta)) + 
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE, linetype = 2) +
+  geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"))
+```
+
+
 ### Exercises
 
-1.  Verify the Frisch-Waugh-Lovell theorem using `big_n` and `cfo` in place of `size`. For each variable, also produce plots like those above (including outliers).
-Are the plots with `big_n` as the independent variable less helpful than those with `cfo` or `size`?
+1. Verify the Frisch-Waugh-Lovell theorem using `big_n` and `cfo` in place of `size`.
+For each variable, also produce plots like those above.
+Why are the plots with `big_n` as the independent variable less helpful?
 
 ```{r}
 #| include: false
@@ -173,6 +203,11 @@ modelsummary(list(fm, fm_aux),
              stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
+2. Above we said that the standard errors of the main regression and the auxiliary regression using the Frisch-Waugh-Lovell theorem should be "very similar".
+Confirm that the standard errors are similar across the variants of `fm` and `fm_aux` that you calculated for the previous question.
+(*Hint*: For regressions with `big_n` as the variable of interest, `summary(fm_aux)$coefficients` and `summary(fm)$coefficients["big_nTRUE", ]` should provide access to the data you want to compare.)
+Can you guess what might explain any differences?
+(*Hint*: Compare `fm$df.residual` and `fm_aux$df.residual` and perhaps use `sqrt()`.)
 
-
-2.  In words, what effect does converting `fyear` into a factor and interacting it with `inv_at`, `I(d_sale - d_ar)` and `ppe` have? (*Hint:* It may be helpful to visual inspect the more complete regression output produced with `sg_format <- "text"` and without `omit = "(fyear|ppe|inv_at|d_sale)"`.)
+3. In words, what effect does converting `fyear` into a factor and interacting it with `inv_at`, `I(d_sale - d_ar)` and `ppe` have?
+(*Hint:* It may be helpful to visually inspect the more complete regression output produced without `coef_omit = "(fyear|ppe|inv_at|d_sale)"`.)
