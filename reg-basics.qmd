@@ -1,5 +1,5 @@
 ---
-title: "Regression fundamentals: Exercise solutions"
+title: "Exercise template for 'Regression fundamentals'"
 author: "Your name here"
 format:
   html: default
@@ -49,8 +49,6 @@ summary(fm_grade)
 
 ```{r}
 #| echo: false
-#| label: tbl-fm-demean
-#| tbl-cap: Regression with demeaned test scores
 demean <- function(x) x - mean(x)
 
 test_scores_demean <-
@@ -66,6 +64,8 @@ fm_demean <- lm(score ~ treat * post,
 
 ```{r}
 #| include: false
+#| label: tbl-fm-demean
+#| tbl-cap: Regression with demeaned test scores
 modelsummary(fm_demean, 
              estimate = "{estimate}{stars}",
              coef_omit = "^factor",
@@ -127,6 +127,7 @@ What happens if we omit it (i.e., just include `post * treat`)?
 ```{r}
 #| label: tbl-feols
 #| tbl-cap: "Regressions results using `feols()`"
+#| echo: false
 fefm <- feols(score ~ I(post * treat) | grade + id, data = test_scores)
 modelsummary(fefm,
              estimate = "{estimate}{stars}",
