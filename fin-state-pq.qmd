@@ -25,11 +25,6 @@ db <- dbConnect(duckdb::duckdb())
 
 1. Suppose we didn't have access to Compustat (or an equivalent database) for the analysis above, describe a process you would use to get the data required to make the plot above comparing performance of Microsoft and Apple.
 
-It does not seem easy to get these data from either Google Finance or Yahoo Finance.
-We could hand-collect these items from the financial statements of the firms, but not easily before ~1995.
-Bloomberg or similar might be another source.
-The reality is that it would be very difficult to collect these data without access to a commercial database (Compustat data are supplied in various forms to private industry; FactSet is an alternative).
-
 2. In the following code, how do `funda_mod` and `funda_mod_alt` differ?
 (For example, where are the data for each table?)
 What does the statement `collect(n = 100)` at the end of this code do?
