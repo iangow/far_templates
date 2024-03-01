@@ -12,17 +12,15 @@ This package was not included in the list of packages to be installed [here](htt
 install.packages("readxl")
 ```
 
-# Importing data {#web-data}
-
 ```{r}
 #| message: false
 #| include: false
 library(dplyr, warn.conflicts = FALSE)
 library(tidyr)     
-library(readr)     # For read_lines(), read_fwf(), etc.
-library(stringr)   # For str_c(), str_detect()
-library(pdftools)  # For pdf_text()
-library(lubridate) # For ymd()
+library(readr)     # read_lines(), read_fwf(), etc.
+library(stringr)   # str_c(), str_detect()
+library(pdftools)  # pdf_text()
+library(lubridate) # ymd()
 ```
 
 ## Reading (seemingly) non-tabular data
@@ -34,15 +32,15 @@ library(lubridate) # For ymd()
     a. Go to the [MSCI GICS website](https://www.msci.com/gics).
     b. Get the link to the file under *historical GICS structures* that is "Effective until Sep 28, 2018".
     c. Use this link and the `tempfile()` and `download.file()` functions to download the linked file.
-    d. Use the `read_excel` function from the `readxl` library to read the downloaded file.
+    d. Use the `read_excel()` function from the `readxl` library to read the downloaded file.
     e. Identify any variables that need to be handled like `temp` in the Fama-French data set above and process accordingly.
-    f. Use the `fill` function from the `tidyr` package to fill in rows as necessary.
+    f. Use `fill()` from the `tidyr` package to fill in rows as necessary.
     g. Make sure that each column has the appropriate data type.
 
 *Hints:*
 
   a. You may find it helpful to look at the Excel file so you can see how the data are structured.
-  b. The function `read_excel` has `skip` and `col_names` arguments that you will probably want to use.
+  b. The `read_excel()` function has `skip` and `col_names` arguments that you will probably want to use.
   c. Your *final* column names should be `sector`, `sector_desc`, `ind_group`, `ind_group_desc`, `industry`, `industry_desc`, `sub_ind`, `sub_ind_desc`, and `sub_ind_details`.
   d. The following code snippets *might* be useful:
   
@@ -63,15 +61,15 @@ col_names <-  c("amount_left_on_table", "company", "ipo_date",
            "offer_price", "first_close_price", "shares_offered", "ticker")
 skip_rows <- 2
 temp <- 
-  pdf_text(url)[-1] %>% 
+  pdf_text(url)[-1] |> 
   read_lines()
 
 max_rows <- which(str_detect(temp, "^Source:")) - 1 - skip_rows
 
 ritter_data_raw <- 
-  pdf_text(url)[-1] %>% 
-    read_lines(skip = 2, n_max = max_rows) %>%
-    tibble(temp = .) %>%
+  output |> 
+    read_lines(skip = 2, n_max = max_rows) |>
+    tibble(temp = _) |>
     filter(!str_detect(temp, "^$"), 
            !str_detect(temp, "^\\s+\\d+$"))
 
@@ -88,15 +86,14 @@ regex <- str_c(
   "$")                # End of string
 
 ritter_data <-
-  ritter_data_raw %>%
-  # Here we use the regular expression to split the data into columns
-  extract(temp, col_names, regex) %>%
-  # Finally, fix up the data types of the columns
+  ritter_data_raw |>
+  extract(temp, col_names, regex) |>
   mutate(across(all_of(c("amount_left_on_table", "first_close_price",
                          "offer_price", "shares_offered")), 
                 parse_number),
          company = str_trim(company),
-         ipo_date = ymd(ipo_date)) 
+         ipo_date = ymd(ipo_date),
+         company = str_trim(company)) 
 ```
 
 ### Exercises
