@@ -57,11 +57,11 @@ library(lubridate) # ymd()
 url <- "https://site.warrington.ufl.edu/ritter/files/money-left-on-the-table.pdf"
 output <- pdf_text(url)[-1]
 
-col_names <-  c("amount_left_on_table", "company", "ipo_date", 
-           "offer_price", "first_close_price", "shares_offered", "ticker")
+col_names <-  c("amount_left_on_table", "company", "ipo_date", "offer_price",
+                "first_close_price", "shares_offered", "ticker")
 skip_rows <- 2
 temp <- 
-  pdf_text(url)[-1] |> 
+  output |>
   read_lines()
 
 max_rows <- which(str_detect(temp, "^Source:")) - 1 - skip_rows
@@ -91,7 +91,6 @@ ritter_data <-
   mutate(across(all_of(c("amount_left_on_table", "first_close_price",
                          "offer_price", "shares_offered")), 
                 parse_number),
-         company = str_trim(company),
          ipo_date = ymd(ipo_date),
          company = str_trim(company)) 
 ```
