@@ -282,7 +282,7 @@ df_controls <-
          roa = coalesce(roa, roa_avg)) |>
   select(gvkey, fyear, at, mtob, leverage, roa)
 
-ff_data_raw <- get_ff_ind(48)
+ff_data <- get_ff_ind(48)
 
 get_ff_data <- function() {
   ff_data_raw |>
@@ -294,17 +294,16 @@ get_ff_data <- function() {
 
 get_das <- function(compustat, drop_extreme = TRUE) {
   
-  ff_data <- get_ff_data()
-  
   for_disc_accruals <-
     compustat |>
-    inner_join(ff_data, by = "sich") |>
+    inner_join(ff_data, 
+               join_by(between(sich, sic_min, sic_max))) |>
     group_by(gvkey, fyr) |>
     arrange(fyear) |>
     filter(lag(at) > 0) |>
     mutate(lag_fyear = lag(fyear),
            acc_at = (ibc - (oancf - xidoc)) / lag(at),
-           one_at = 1/lag(at),
+           one_at = 1 / lag(at),
            ppe_at = ppegt / lag(at),
            sale_c_at = (sale - lag(sale)) / lag(at),
            salerect_c_at = ((sale - lag(sale)) - 
