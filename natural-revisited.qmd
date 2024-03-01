@@ -7,7 +7,7 @@ bibliography: book.bib
 
 ```{r}
 #| label: libraries
-#| message: false
+#| include: false
 library(fixest)
 library(modelsummary)
 library(dplyr, warn.conflicts = FALSE)
@@ -18,6 +18,7 @@ library(stringr)     # For str_detect() and str_match()
 library(DBI)
 library(ggplot2)
 library(farr)
+library(purrr)
 ```
 
 ## A replication crisis? {#sec-rep-crisis}
@@ -445,7 +446,7 @@ If not, how might you ensure this and does this cause problems? (Just describe t
 #| label: reg_functions
 #| cache: true
 #| include: false
-controls_list <- c("log(at)", "mtob", "roa", "leverage")
+ctrls_list <- c("log(at)", "mtob", "roa", "leverage")
 
 reg_year_fe <- function(df, dv = "da_adj",
                         controls = TRUE, firm_fe = FALSE, cl_2 = TRUE,
@@ -456,10 +457,10 @@ reg_year_fe <- function(df, dv = "da_adj",
            during = year %in% c(2005, 2006, 2007),
            post = year %in% c(2008, 2009, 2010))
   
-  model <- paste0(dv, " ~ pilot * (during + post) ",
-                  if_else(controls, 
-                          paste0(" + ", paste(controls_list, collapse = " + ")),
-                          ""),
+  model <- str_c(dv, " ~ pilot * (during + post) ",
+                 if_else(controls, 
+                         str_c(" + ", str_c(ctrls_list, 
+                                            collapse = " + ")), ""),
                     if_else(firm_fe, "| gvkey + year ", "| year "))
   if (is.null(vcov)) {
     vcov = as.formula(if_else(!cl_2, "~ gvkey ", "~ year + gvkey"))
@@ -475,23 +476,31 @@ reg_year_fe <- function(df, dv = "da_adj",
 ```{r}
 #| include: false
 make_reg_table <- function(df, dv = "da_adj", cl_2 = TRUE) {
-  omit <- paste0("^(", paste(gsub("[()]", ".", 
-                                  c("during", "post", controls_list)), 
-                             collapse="|"), ")")
-  fms <- list()
-  fms[[1]] <- reg_year_fe(df, dv = dv, controls = FALSE, firm_fe = FALSE,
-                          cl_2 = cl_2)
-  fms[[2]] <- reg_year_fe(df, dv = dv, controls = TRUE, firm_fe = FALSE,
-                          cl_2 = cl_2)
-  fms[[3]] <- reg_year_fe(df, dv = dv, controls = FALSE, firm_fe = TRUE,
-                          cl_2 = cl_2)
-  fms[[4]] <- reg_year_fe(df, dv = dv, controls = TRUE, firm_fe = TRUE,
-                          cl_2 = cl_2)
+  omit <- str_c("^(", str_c(str_replace_all(c("during", "post", ctrls_list),
+                                            "[()]", "."), 
+                            collapse="|"), ")")
+  
+  run_reg <- function(controls, firm_fe) {
+    reg_year_fe(df, dv = dv, controls = controls, firm_fe = firm_fe,
+                cl_2 = cl_2)
+  }
+  
+  params <- tibble(controls = c(FALSE, TRUE, FALSE, TRUE),
+                   firm_fe = c(FALSE, FALSE, TRUE, TRUE))
+  
+  fms <- pmap(params, run_reg)
+  
+  notes <- tribble(~term,  ~`1`,  ~`2`, ~`3`, ~`4`,
+                   "Firm FEs", "No", "No", "Yes", "Yes",
+                   "Controls", "No", "Yes", "No", "Yes")
+  
   modelsummary(fms,
                estimate = "{estimate}{stars}",
-               gof_map = c("nobs", "r.squared"),
+               gof_map = "nobs",
                stars = c('*' = .1, '**' = 0.05, '***' = .01),
-               coef_omit = paste(gsub("[()]", ".", controls_list), collapse = "|"))
+               coef_omit = str_c(str_replace_all(ctrls_list, "[()]", "."),
+                                 collapse = "|"),
+               add_rows = notes)
 }
 ```
 
