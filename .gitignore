@@ -8,3 +8,4 @@
 *_files
 *.pdf
 .swp
+.Renviron
