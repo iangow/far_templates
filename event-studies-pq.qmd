@@ -14,6 +14,7 @@ library(dbplyr)       # For window_order()
 library(ggplot2)
 library(farr)
 library(modelsummary)
+library(farr)
 ```
 
 ## Overview
@@ -32,11 +33,11 @@ What features are present and what, if any, are missing?
 
 ```{r apple_reg_data}
 #| include: false
-pg <- dbConnect(RPostgres::Postgres())
+db <- dbConnect(duckdb::duckdb())
 
-stocknames <- tbl(pg, Id(schema = "crsp", table = "stocknames"))
-dsf <- tbl(pg, Id(schema = "crsp", table = "dsf"))
-dsi <- tbl(pg, Id(schema = "crsp", table = "dsi"))
+stocknames <- load_parquet(db, schema = "crsp", table = "stocknames")
+dsf <- load_parquet(db, schema = "crsp", table = "dsf")
+dsi <- load_parquet(db, schema = "crsp", table = "dsi")
 
 apple_permno <-
   stocknames |>
@@ -57,7 +58,7 @@ apple_rets <-
 apple_event_dates <-
   apple_events |>
   mutate(permno = apple_permno) |>
-  get_event_dates(pg, 
+  get_event_dates(db, 
                   end_event_date = "end_event_date",
                   win_start = -1, win_end = +1) 
 
@@ -156,3 +157,8 @@ How well do the variables *NLargeBlock* and *NSmallCoalitions* measure the expos
 5. LOT makes use of a number of **Monte Carlo simulations**.
 How do these compare with the bootstrapping analyses conducted by @Zhang:2007tv?
 Are the simulation addressing the same underlying issues as @Zhang:2007tv bootstrapping approach?
+
+```{r}
+#| include: false
+dbDisconnect(db, shutdown = TRUE)
+```
