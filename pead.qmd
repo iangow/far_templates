@@ -14,21 +14,12 @@ You can delete this note in preparing your submission.
 #| message: false
 #| include: false
 library(dplyr, warn.conflicts = FALSE)
+library(dbplyr)          # window_order()
 library(DBI)
 library(lubridate)
-library(stargazer)
+library(modelsummary)
 library(ggplot2)
 library(tidyr)
-library(farr)
-```
-
-```{r}
-#| include: false
-if (knitr::is_latex_output()) {
-  sg_format <- "latex"
-} else {
-  sg_format <- "html"
-}
 ```
 
 ## Fiscal years
@@ -40,84 +31,85 @@ pg <- dbConnect(RPostgres::Postgres(),
                 bigint = "integer",
                 check_interrupts = TRUE)
 
-funda <- tbl(pg, sql("SELECT * FROM comp.funda"))
-fundq <- tbl(pg, sql("SELECT * FROM comp.fundq"))
-company <- tbl(pg, sql("SELECT * FROM comp.company"))
-ccmxpf_lnkhist <- tbl(pg, sql("SELECT * FROM crsp.ccmxpf_lnkhist")) 
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+fundq <- tbl(pg, Id(schema = "comp", table = "fundq"))
+company <- tbl(pg, Id(schema = "comp", table = "company"))
+ccmxpf_lnkhist <- tbl(pg, Id(schema = "crsp",
+                             table = "ccmxpf_lnkhist"))
 
 funda_mod <-
-  funda %>%
+  funda |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D")
 
 fundq_mod <-
-  fundq %>%
+  fundq |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D")
 
 fundq_probs <-
-  fundq_mod %>%
-  group_by(gvkey, datadate) %>%
-  filter(n() > 1) %>%
-  ungroup() %>%
-  select(gvkey, datadate, fyearq, fqtr, fyr, rdq) %>%
-  arrange(gvkey, datadate) %>%
+  fundq_mod |>
+  group_by(gvkey, datadate) |>
+  filter(n() > 1) |>
+  ungroup() |>
+  select(gvkey, datadate, fyearq, fqtr, fyr, rdq) |>
+  arrange(gvkey, datadate) |>
   collect()
 
 fundq_local <-
-  fundq_mod %>%
-  filter(saleq > 0 & !is.na(saleq)) %>%
-  select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) %>%
-  rename(datadateq = datadate) %>%
+  fundq_mod |>
+  filter(saleq > 0 & !is.na(saleq)) |>
+  select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
+  rename(datadateq = datadate) |>
   collect()
 
 firm_years <-
-  funda_mod %>%
-  select(gvkey, datadate) %>%
+  funda_mod |>
+  select(gvkey, datadate) |>
   collect()
 
 link_table <-
-  fundq_mod %>% 
-  rename(datadateq = datadate) %>%
-  select(gvkey:fyr) %>%
-  mutate(year = if_else(fyr <= 5L, fyearq - 1L, fyearq)) %>%
-  mutate(month = lpad(as.character(fyr), 2L, "0")) %>%
-  mutate(datadate = as.Date(paste(year, month, '01', sep = "-"))) %>%
-  mutate(datadate = as.Date(datadate + sql("interval '1 month - 1 day'"))) %>%
-  select(-month, -year, -fqtr) %>%
+  fundq_mod |> 
+  rename(datadateq = datadate) |>
+  select(gvkey:fyr) |>
+  mutate(year = if_else(fyr <= 5L, fyearq - 1L, fyearq)) |>
+  mutate(month = lpad(as.character(fyr), 2L, "0")) |>
+  mutate(datadate = as.Date(paste(year, month, '01', sep = "-"))) |>
+  mutate(datadate = as.Date(datadate + sql("interval '1 month - 1 day'"))) |>
+  select(-month, -year, -fqtr) |>
   collect()
 
 merged_data <-
-  firm_years %>%
-  inner_join(link_table, by = c("gvkey", "datadate")) %>%
+  firm_years |>
+  inner_join(link_table, by = c("gvkey", "datadate")) |>
   inner_join(fundq_local, 
              by = c("gvkey", "datadateq", "fyearq", "fyr"))
 
 fyear_data <-
-  funda_mod %>%
-  select(fyear, datadate) %>%
+  funda_mod |>
+  select(fyear, datadate) |>
   mutate(month = month(datadate),
-         year = year(datadate)) %>%
-  filter(!is.na(fyear)) %>%
+         year = year(datadate)) |>
+  filter(!is.na(fyear)) |>
   collect()
 
 ni_annual <-
-  funda_mod %>%
-  select(gvkey, datadate, fyr, sale, ni) %>%
+  funda_mod |>
+  select(gvkey, datadate, fyr, sale, ni) |>
   collect()
 
 ni_qtrly <-
-  fundq_mod %>%
-  select(gvkey, datadate, fyr, fqtr, saleq, niq, ibq) %>%
-  rename(datadateq = datadate) %>%
+  fundq_mod |>
+  select(gvkey, datadate, fyr, fqtr, saleq, niq, cogsq, ibq) |>
+  rename(datadateq = datadate) |>
   collect()
 
 ccm_link <-
-  ccmxpf_lnkhist %>%
+  ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) %>%
+         linkprim %in% c("C", "P")) |>
   mutate(linkenddt = coalesce(linkenddt,
-                              max(linkenddt, na.rm = TRUE))) %>%
+                              max(linkenddt, na.rm = TRUE))) |>
   collect()
 ```
 
@@ -125,27 +117,27 @@ ccm_link <-
 #| cache: true
 #| dependson: wrds-data
 #| include: false
-fms <- list()
-fms[[1]] <- lm(fyear ~ factor(month) + year - 1, data = fyear_data)
-fms[[2]] <- lm(fyear ~ month + year, data = fyear_data)
+fms <- list(lm(fyear ~ factor(month) + year - 1, data = fyear_data),
+            lm(fyear ~ month + year, data = fyear_data))
 ```
 
 ```{r}
 #| output: asis
 #| message: false
 #| echo: false
-#| include: false
-stargazer(fms, type = sg_format, 
-          caption = "Regression of fyear on month indicators",
-          label = "tab:fyear",
-          header = FALSE, omit.stat = c("ser", "f"),
-          single.row = TRUE, report = "vc")
+#| tbl-cap: "Regression of fyear on month indicators"
+#| label: tbl-base-fms
+modelsummary(fms,
+             estimate = "{estimate}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared", "adj.r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
 ```{r}
 #| include: false
 fyear_data <-
-  fyear_data %>%
+  fyear_data |>
   mutate(pred_1 = predict(fms[[1]]), 
          pred_2 = predict(fms[[2]]),
          resid_1 = pred_1 - fyear,
@@ -154,16 +146,16 @@ fyear_data <-
 
 ```{r}
 #| label: fig-plot-sample
-#| fig.cap: Plot of fyear against datadate
+#| fig-cap: Plot of fyear against datadate
 #| echo: false
 plot_sample <-
-  fyear_data %>%
-  filter(year %in% c(2001, 2002)) %>%
-  select(datadate, fyear, pred_1, pred_2) %>%
-  distinct() %>%
+  fyear_data |>
+  filter(year %in% c(2001, 2002)) |>
+  select(datadate, fyear, starts_with("pred_")) |>
+  distinct() |>
   arrange(datadate)
 
-plot_sample %>%
+plot_sample |>
   ggplot(aes(x = datadate)) +
   geom_point(aes(y = fyear, color = "fyear")) +
   geom_line(aes(y = pred_1, color = "pred_1")) +
