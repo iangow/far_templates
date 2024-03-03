@@ -15,12 +15,13 @@ install.packages("readxl")
 ```{r}
 #| message: false
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
+library(dplyr)
 library(tidyr)     
-library(readr)     # read_lines(), read_fwf(), etc.
-library(stringr)   # str_c(), str_detect()
-library(pdftools)  # pdf_text()
-library(lubridate) # ymd()
+library(readr)     # For read_lines(), read_fwf(), etc.
+library(stringr)   # For str_c(), str_detect()
+library(pdftools)  # For pdf_text()
+library(lubridate) # For ymd()
+library(readxl)
 ```
 
 ## Reading (seemingly) non-tabular data
@@ -99,7 +100,7 @@ ritter_data <-
 
 1. In the PDF, Ritter states "IPOs marked with an \* also had international tranches (and probably some others, too)." 
 Write code to remove this "\*" when present and create an additional column `intl_tranche` that indicates an international tranche.
-(*Hint*: The `extract` function can be used here. In a first pass, you might use `into = c("company", "intl_tranche")` and  `regex = "^(.*?)(\\*?)$"` with this function.
+(*Hint*: The `extract()` function can be used here. In a first pass, you might use `into = c("company", "intl_tranche")` and  `regex = "^(.*?)(\\*?)$"` with this function.
 Can you see what the `?` in `.*?` is doing? 
 There is some explanation [here](https://stackoverflow.com/questions/3075130/what-is-the-difference-between-and-regular-expressions). 
 Does the regex work without this `?`?
@@ -169,4 +170,4 @@ What explains missing values (if any) here?
     
 9. What do you observe about `acq_cusip` and `tgt_cusip`?
 Can you write some code to check that these variables have been read in correctly?
-(*Hint*: The function `nchar()` might be useful here.)
+(*Hint*: The function `str_length()` might be useful here.)
