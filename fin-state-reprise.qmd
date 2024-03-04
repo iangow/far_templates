@@ -83,7 +83,7 @@ What's the most significant difference between this case and the one above?
 
 ```{r}
 funda_na_fixed |>
-  filter(gvkey=="145003", datadate=="2001-12-31") |>
+  filter(gvkey == "145003", datadate == "2001-12-31") |>
   select(datadate, at, at_calc, at_diff, act, ppent, intan, ivao, ao) |>
   collect()
 ```
@@ -137,7 +137,7 @@ In this section, we discuss @Koh:2015vz, who "investigate whether missing R&D ex
 ### Discussion questions
 
 1. What is the following code doing?
-@Koh:2015vz use a similar `filter`. How do they explain their rationale for this?
+@Koh:2015vz use a similar filter. How do they explain their rationale for this?
 
 ```{r}
 included_firms <-

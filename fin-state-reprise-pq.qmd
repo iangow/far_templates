@@ -147,7 +147,8 @@ In this section, we discuss @Koh:2015vz, who "investigate whether missing R&D ex
 ### Discussion questions
 
 1. What is the following code doing?
-@Koh:2015vz use a similar `filter`. How do they explain their rationale for this?
+@Koh:2015vz use a similar filter.
+How do they explain their rationale for this?
 
 ```{r}
 included_firms <-
