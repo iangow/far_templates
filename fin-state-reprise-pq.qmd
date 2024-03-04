@@ -107,7 +107,7 @@ tol <- 0.1
 funda_cf_balance <-
   funda_mod |>
   select(gvkey, datadate, oancf, ivncf, fincf, exre, chech, che, ch, ivst) |>
-  mutate(across(oancf:exre, ~ coalesce(., 0)),
+  mutate(across(oancf:exre, \(x) coalesce(x, 0)),
          chech_calc = oancf + ivncf + fincf + exre,
          chech_balance = abs(chech_calc - chech) < tol) |>
   filter(chech_calc != 0, chech_balance) |>
@@ -125,7 +125,7 @@ funda_cf_balance <-
                      abs(chech - d_ch) < tol    ~ "Articulates using CH",
                      abs(chech - d_che) >= tol  ~ "Does not articulate",
                      abs(chech - d_ch) >= tol   ~ "Does not articulate",
-                     TRUE ~ "Other"))
+                     .default = "Other"))
 
 funda_cf_balance |>
   count(artic_desc) |>
