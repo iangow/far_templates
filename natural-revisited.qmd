@@ -285,14 +285,6 @@ df_controls <-
 
 ff_data <- get_ff_ind(48)
 
-get_ff_data <- function() {
-  ff_data_raw |>
-    rowwise() |> 
-    mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
-    unnest(sich) |> 
-    select(ff_ind, sich)
-}
-
 get_das <- function(compustat, drop_extreme = TRUE) {
   
   for_disc_accruals <-
