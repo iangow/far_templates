@@ -308,6 +308,8 @@ modelsummary(fms,
              stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
+## References {-}
+
 ### Exercises
 
 1. Verify either by direct computation using the data in `coefs_df` or using a little algebra that regressing the first-stage coefficients on a constant (as we did above) yields the desired second-stage results for FM-t.
