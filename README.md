@@ -25,7 +25,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Describing data | [r-intro.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/r-intro.qmd) | Use PostgreSQL template |
 | Regression fundamentals | [reg-basics.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/reg-basics.qmd) | Use PostgreSQL template |
 | Causal inference | [causal-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd) | Use PostgreSQL template |
-| Statistical inference  | Template to come | Template to come |
+| Statistical inference  | [stat-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/stat-inf.qmd) | Use PostgreSQL template |
 | Financial statements: A first look | [fin-state.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd) | [fin-state-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-pq.qmd) |
 | Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) | 
 | Linking databases | Template to come later | Template to come later

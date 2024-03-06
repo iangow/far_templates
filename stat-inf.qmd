@@ -1,0 +1,318 @@
+---
+title: "Exercise template for 'Statistical inference'"
+author: Ian Gow
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| warning: false
+#| message: false
+#| include: false
+library(dplyr)
+library(farr)
+library(ggplot2)
+library(modelsummary)
+library(kableExtra)    # kbl()  
+library(purrr)         # map(), map_vec(), map_df()
+library(tidyr)         # nest()
+library(sandwich)      # NeweyWest()
+library(plm)           # pmg()
+library(fixest)        # se(), pvalue()
+```
+
+## Data-generating processes
+
+```{r}
+#| include: false
+hgt_mean <- 165
+hgt_sd <- 8
+```
+
+```{r}
+#| include: false
+get_hgt_sample <- function(n) {
+  rnorm(n, mean = hgt_mean, sd = hgt_sd)
+}
+```
+
+```{r}
+#| include: false
+n_samples <- 10000
+```
+
+```{r}
+#| include: false
+get_hgt_sample_df <- function(i, n) {
+  tibble(i, data = list(rnorm(n, mean = hgt_mean, sd = hgt_sd)))
+}
+```
+
+```{r}
+#| label: hgt_samples_3
+#| cache: true
+#| include: false
+set.seed(2023)
+hgt_samples <- map(1:n_samples, get_hgt_sample_df, n = 100)
+
+hgt_samples_df <- list_rbind(hgt_samples)
+
+hgt_samples_stats <- 
+  hgt_samples_df |>
+  mutate(n = map_vec(data, length),
+         mean = map_vec(data, mean),
+         se = map_vec(data, sd) / sqrt(n)) |>
+  select(-data)
+
+hgt_stats_summ <-
+  hgt_samples_stats |>
+  summarize(n = mean(n),
+            mean_mean = mean(mean),
+            sd_mean = sd(mean),
+            mean_se = mean(se),
+            sd_se = sd(se))
+
+hgt_stats_summ |>
+  transmute(mean_error = mean_mean - hgt_mean,
+            se_error = sd_mean - hgt_sd / sqrt(n),
+            se_est_error = mean_se - sd_mean)
+```
+
+### Discussion questions
+
+1. Explain what "error" each of `mean_error`, `se_error`, and `se_est_error` is capturing.
+
+2. What effects do you expect changes in the values of `n_samples` or `n` to have on  `mean_error`? Do you expect changing `n_samples` or changing `n` to have a greater effect?
+Verify your conjectures using the simulation code.
+(*Hint:* Consider 100,000 draws of samples of 100 and 10,000 draws of samples of 1,000. In each case you should `set.seed(2023)` afresh and effectively replace data in `hgt_samples`.)
+
+We generate new data for `n = 1000` and present results in @tbl-hgt-err-1000.
+
+## Hypothesis testing
+
+```{r}
+#| include: false
+hgt_mean_null <- 170
+```
+
+```{r}
+#| include: false
+set.seed(2023)
+sample_size <- 100
+test_sample <- get_hgt_sample(sample_size)
+mean_est <- mean(test_sample)
+```
+
+```{r}
+#| include: false
+bimodal_dgf <- function(n) {
+  
+  short <- sample(c(TRUE, FALSE), 
+                  size = n, 
+                  prob = c(0.3, 0.7), 
+                  replace = TRUE)
+  
+  short_sample <- rnorm(n, mean = 155, sd = 3)
+  tall_sample <- rnorm(n, mean = 171, sd = 3)
+  if_else(short, short_sample, tall_sample)
+}
+```
+
+```{r}
+#| include: false
+get_means <- function(sample_size, n_samples, dgf) {
+  tibble(i = 1:n_samples,
+         sample = map(i, function(x) dgf(sample_size)),
+         mean = map_vec(sample, mean),
+         se = map_vec(sample, function(x) sd(x) / sqrt(length(x) - 1))) |>
+    select(-sample) |>
+    mutate(z = mean / se)
+}
+```
+
+```{r}
+#| include: false
+make_clt_plot <- function(df) {
+  df |>
+    ggplot(aes(x = mean)) +
+    geom_histogram(aes(y = after_stat(density)), fill = "green", 
+                   binwidth = sd(df$mean) / 10) +
+    geom_vline(aes(xintercept = mean(mean), color = "red")) +
+    stat_function(fun = dnorm, 
+                  args = list(mean = mean(df$mean), 
+                              sd = sd(df$mean)),
+                  color = "blue") +
+    theme(legend.position = "none") 
+}
+```
+
+```{r}
+#| include: false
+clt_demo <- function(sample_size, n_samples, dgf) {
+  get_means(sample_size, n_samples, dgf) |>
+    make_clt_plot()
+}
+```
+The following code reproduces the plot from the book as @fig-bimodal-clt-100.
+
+```{r}
+#| label: fig-bimodal-clt-100
+#| fig-cap: "Histogram for sample means from bimodal distribution: $n = 100$"
+clt_demo(sample_size = 100, n_samples = 10000, bimodal_dgf)
+```
+
+### Exercises
+
+1. What is the relation between critical values and p-values using z-statistics and t-statistics?
+(*Hint:* Use R functions such as `qt(p/2, df = sample_size - 1)` and `qnorm(p/2)` for various significance levels and sample sizes.)
+
+2. Explain how the output of the following code relates to the statistical tests in the previous question? (*Hint:* Can you use the functions from that question to produce the p-values reported below?)
+
+```{r}
+df <- tibble(x = test_sample)
+fm <- lm((x - hgt_mean_null) ~ 1, data = df)
+summary(fm)
+```
+
+3. Examine `clt_demo(sample_size, n_samples = 10000, bimodal_dgf)` for different values of `sample_size`.
+At what value of `sample_size` does the underlying non-normality of `bimodal_dgf()` become apparent?
+
+4. Using the value for `sample_size` you calculated for the previous question, what effect does varying `n_samples` have on the distribution?
+How do you interpret the pattern here?
+
+5. Create your own data-generating function (say, `my_dgf()`) like `bimodal_dgf()`. 
+This function should embody the distribution of a random variable and it should have a single required argument `n` for the size of the sample that it returns.
+Examine the output of `clt_demo()` for your function.
+(*Hint*: Like `bimodal_dgf()`, you might find it helpful to use R's built-in functions, such as `sample()` and `rnorm()` to make your function.)
+
+## Differences in means
+
+```{r}
+#| label: diff_samples
+#| cache: true
+#| include: false
+set.seed(2023)
+sample_0_stats <- get_means(sample_size = 1000,
+                            n_samples = 10000,
+                            dgf = rnorm)
+
+sample_1_stats <- get_means(sample_size = 1000,
+                            n_samples = 10000,
+                            dgf = rnorm)
+
+merged_stats <- 
+  sample_0_stats |>
+  inner_join(sample_1_stats, by = "i", suffix = c("_0", "_1")) |>
+  mutate(mean_diff = mean_1 - mean_0,
+         se_diff = sqrt(se_0 ^ 2 + se_1 ^ 2),
+         z_diff = mean_diff / se_diff)
+
+crit_value <- abs(qnorm(0.025))
+```
+
+```{r}
+#| label: tbl-rej-choice
+#| tbl-cap: Null hypothesis rejection rates for different approaches
+#| echo: false
+merged_stats |>
+  mutate(sig_diff = abs(z_diff) > crit_value,
+         sig_1 = abs(z_1) > crit_value,
+         sig_0 = abs(z_0) > crit_value) |>
+  summarize(prop_sig_diff = mean(sig_diff),
+            prop_sig_diff_alt = mean((sig_1 & !sig_0) | (sig_0 & !sig_1)),
+            prop_sig_diff_choice = mean(sig_diff | (sig_1 & !sig_0) |
+                                          (sig_0 & !sig_1))) |>
+  kbl(booktabs = TRUE)
+```
+
+### Exercises
+
+1. What is the issue implied by the statistics reported in @tbl-rej-choice?
+What is the correct approach implied by these statistics?
+Why might researchers prefer to have a choice regarding the test to be used?
+
+## Dependence
+
+```{r}
+#: include: false
+set.seed(2021)
+test <- get_got_data(N = 500, T = 10, 
+                     Xvol = 0.75, Evol = 0.75, 
+                     rho_X = 0.5, rho_E = 0.5)
+
+results <-
+  test |> 
+  group_by(year) |> 
+  nest() |>
+  mutate(fm = map(data, \(df) lm(y ~ x, data = df)),
+         coefs = map(fm, coefficients))
+
+coefs_df <- 
+  results |>
+  unnest_wider(coefs) |>
+  select(year, `(Intercept)`, x) 
+
+fms <- list(lm(`(Intercept)` ~ 1, data = coefs_df),
+            lm(x ~ 1, data = coefs_df))
+
+get_nw_vcov <- function(fm, lag = 1) {
+  NeweyWest(fm, lag = lag, prewhite = FALSE, adjust = TRUE)
+}
+```
+
+```{r}
+#| include: false
+tidy.pmg <- function(x, ...) {
+    res <- summary(x)
+    tibble(
+      term      = names(res$coefficients),
+      estimate  = res$coefficients,
+      std.error  = se(res),
+      statistic = res$coefficients / se(res),
+      p.value = pvalue(res))
+}
+
+glance.pmg  <- function(x, ...) {
+    res <- summary(x)
+    tibble(
+      r.squared = res$rsqr,
+      adj.r.squared  = res$r.squared,
+      nobs = length(res[[2]]))
+}
+```
+
+```{r}
+#| include: false
+model <- as.formula(y ~ x)
+fms <- list(OLS = lm(model, data = test),
+            White = lm(model, data = test),
+            NW = plm(model, test, index = c("firm", "year"),
+                     model = "pooling"),
+            `FM-t` = pmg(model, test, index = "year"),
+            `CL-i` = feols(model, vcov = ~ firm, data = test),
+            `CL-t` = feols(model, vcov = ~ year, data = test),
+            `CL-2` = feols(model, vcov = ~ year + firm, data = test))
+
+vcovs <- map(fms, vcov)
+vcovs[["White"]] <- vcovHC(fms[["White"]], type="HC1")
+vcovs[["NW"]] <- vcovNW(fms[["NW"]])
+```
+
+### Exercises
+
+1. Verify either by direct computation using the data in `coefs_df` or using a little algebra that regressing the first-stage coefficients on a constant (as we did above) yields the desired second-stage results for FM-t.
+
+2. Assume that the null hypothesis is $H_0: \beta = 1$. 
+Using the reported coefficients and standard errors for each of the methods listed in @tbl-ses-all (i.e., `r paste(names(fms), collapse = ", ")`), for which methods is the null hypothesis rejected?
+
+3. Based on the analysis in @Gow:2010ub, when should you use the FM-NW or Z2 approaches?
+What factors likely led to the use of these approaches and claims for them (i.e., robustness to cross-sectional and time-series dependence) that were unsubstantiated (and ultimately false)?
+
+4. If FM-i is, as @Gow:2010ub show, so inappropriate for the situations in which it was used, why do you think it was used in those situations?
+
+5. @Gow:2010ub refer to "the standard 1.64, 1.96, and 2.58 critical values."
+Using the `pnorm()` function, determine the p-value associated with each of these critical values.
+Are these one-tailed or two-tailed p-values?
+The values of 1.64, 1.96, and 2.58 are approximations.
+Which function in R allows you to recover the precise critical values associated with a chosen p-value? (*Hint*: Read the help provided by `? pnorm` in R.)
+Provide the critical values to at least four decimal places.
