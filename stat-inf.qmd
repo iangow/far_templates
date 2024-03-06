@@ -86,8 +86,6 @@ hgt_stats_summ |>
 Verify your conjectures using the simulation code.
 (*Hint:* Consider 100,000 draws of samples of 100 and 10,000 draws of samples of 1,000. In each case you should `set.seed(2023)` afresh and effectively replace data in `hgt_samples`.)
 
-We generate new data for `n = 1000` and present results in @tbl-hgt-err-1000.
-
 ## Hypothesis testing
 
 ```{r}
@@ -296,6 +294,18 @@ fms <- list(OLS = lm(model, data = test),
 vcovs <- map(fms, vcov)
 vcovs[["White"]] <- vcovHC(fms[["White"]], type="HC1")
 vcovs[["NW"]] <- vcovNW(fms[["NW"]])
+```
+
+```{r}
+#| label: tbl-ses-all
+#| tbl-cap: "Tests for $H_0: \\beta_1 = 0$"
+#| echo: false
+modelsummary(fms, 
+             vcov = vcovs,
+             estimate = "{estimate}{stars}",
+             coef_omit = "^factor",
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
 ### Exercises
