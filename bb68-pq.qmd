@@ -22,9 +22,10 @@ library(farr)
 
 ```{r}
 #| include: false
-#
-# Change the line below to reflect the location of the Parquet files
-# on your computer.
+#| eval: false
+# If necessary, change the line below to reflect the location of 
+# the Parquet file repository on your computer and change "eval: false" above
+# to "eval: true".
 Sys.setenv(DATA_DIR = "~/Dropbox/pq_data")
 ```
 
@@ -408,5 +409,10 @@ Note that you will only be interested in rows at $t = 0$ (e.g., `filter(rel_td =
   
 8. Using the data on *NI* and *AI* from above, create a plot of $AI/NI$ like that in Figure 2 of @Ball:2019wu.
 Do you observe similar results to those shown in Figure 2 of @Ball:2019wu?
+
+```{r}
+#| include: false
+dbDisconnect(db, shutdown = TRUE)
+```
 
 ## References {-}
