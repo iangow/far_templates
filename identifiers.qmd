@@ -1,17 +1,8 @@
 ---
-title: "Solutions for 'Linking databases'"
-author: "Ian D. Gow"
-date: 2024-03-08
-date-format: "D MMMM YYYY"
-format:
-  pdf: 
-    colorlinks: true
-    geometry:
-      - left=2.5cm
-      - right=2.5cm
-    papersize: a4
-    mainfont: TeX Gyre Pagella
-    mathfont: TeX Gyre Pagella Math
+title: "Exercise template for 'Linking databases'"
+author: Your name
+format: html
+bibliography: book.bib
 ---
 
 ```{r}
