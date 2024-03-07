@@ -134,8 +134,20 @@ Can a PERMNO be associated with more than one CUSIP over time?
 4. Looking at entries on `crsp.stocknames` where `ticker` is `DELL`, we see two different `permno` values. 
 What explains this?
 
+```{r}
+stocknames |> 
+  filter(str_detect(comnam, '^DELL ')) |> 
+  select(permno, cusip, ncusip, comnam, siccd, namedt, nameenddt) |>
+  collect()
+```
+
 5. Looking at `permno` of `11081` (Dell), we see two different CUSIP values.
 What change appears to have caused the change in CUSIP for what CRSP regards as the same security?
+
+6. Based on the results shown in @tbl-ccm-cusip-comp and @tbl-ccm-cusip-cov, what would be the main issue with using a CUSIP-based match of CRSP with Compustat?
+Choose two rows from the two tables where one of the columns is `FALSE`.
+Can you discern from the underlying tables what the issue is creating a `FALSE `value and which match (if any) is valid?
+Can you conclude that the CCM-based match is the preferred one in each case?
 
 ```{r}
 #| include: false
