@@ -1,0 +1,143 @@
+---
+title: "Solutions for 'Linking databases' (PQ)"
+author: "Ian D. Gow"
+date: 2024-02-29
+date-format: "D MMMM YYYY"
+format:
+  pdf: 
+    colorlinks: true
+    geometry:
+      - left=2.5cm
+      - right=2.5cm
+    papersize: a4
+    mainfont: TeX Gyre Pagella
+    mathfont: TeX Gyre Pagella Math
+---
+
+```{r}
+#| include: false
+library(dplyr)
+library(DBI)
+library(farr)
+library(ggplot2)
+library(dbplyr)    # window_order()
+library(lubridate) # floor_date()
+```
+
+## The CRSP database
+
+```{r}
+#| include: false
+db <- dbConnect(duckdb::duckdb())
+
+dsf <- load_parquet(db, "dsf", "crsp")
+dsi <- load_parquet(db, "dsi", "crsp")
+msf <- load_parquet(db, "msf", "crsp")
+msi <- load_parquet(db, "msi", "crsp")
+ccmxpf_lnkhist <- load_parquet(db, "ccmxpf_lnkhist", "crsp")
+stocknames <- load_parquet(db, "stocknames", "crsp")
+
+company <- load_parquet(db, "company", "comp")
+```
+
+### Exercises
+
+1. If you look at the stock tables (`crsp.dsf` and `crsp.msf`), you will see that `prc` can be negative on either table.
+Do negative stock prices make sense economically?
+What do negative stock prices on CRSP mean? 
+(CRSP documentation can be found on [the WRDS website](https://wrds-www.wharton.upenn.edu/pages/support/manuals-and-overviews/crsp/stocks-and-indices/overview-crsp-us-stock-database/#dataset-organization).)
+What would be some alternative approaches to encode this information? 
+(Write code to recast the data using one of these approaches.)
+Why do you think that CRSP chose the approach used?
+
+2. How do `ret` and `retx` differ?
+Which variable are you more likely to use in research?
+
+3. Looking at the `date` variable on `crsp.msf`, is it always the last day of the month?
+If not, why not?
+
+
+4. Suggest the "natural" primary key for these tables.
+Check that this is a primary key for `crsp.msf`.
+
+5. What is being depicted in @fig-mys-plot1 and @fig-mys-plot2?
+What are the sources of variation across months in the first plot?
+Looking at the plots, what appears to be the main driver of variation in the first plot.
+Create an additional plot to visualize the source of variation in the first not depicted below.
+In the code below, we are using `collect()` followed by `mutate(month = floor_date(date, "month"))` to calculate `month`. 
+What changes occur in terms of where the processing happens if we replace these two lines with `mutate(month = as.Date(floor_date("month", date)))`?
+Do we get different results?
+Why do we need the `as.Date()` function in the second case?
+
+```{r}
+#| include: false
+plot_data <-
+  dsf |>
+  select(date) |>
+  filter(between(date, "2017-12-31", "2022-12-31")) |>
+  collect() |>
+  mutate(month = floor_date(date, "month"))
+```
+```{r}
+#| label: fig-mys-plot1
+#| fig-cap: Number of observations by month (#1)
+#| echo: false
+plot_data |>
+  count(month) |>
+  ggplot(aes(x = month, y = n)) +
+  geom_bar(stat = "identity") +
+  scale_x_date(date_breaks = "2 months",
+               expand = expansion()) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+#| label: fig-mys-plot2
+#| fig-cap: Number of observations by month (#2)
+#| echo: false
+plot_data |>
+  distinct() |>
+  count(month) |>
+  ggplot(aes(x = month, y = n)) +
+  geom_bar(stat = "identity") +
+  scale_x_date(date_breaks = "2 months",
+               expand = expansion()) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+6. What is the primary key for `crsp.dsi` and `crsp.msi`? 
+Verify that it is a valid key for both tables.
+
+7. Using the `dplyr` verb `anti_join()`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
+Do the same for `crsp.msi` and `crsp.msf`.
+
+8. General Motors Corporation declared bankruptcy in June 2009.
+Does the successor firm General Motors *Company* have the same GVKEY as General Motors Corporation? The same PERMNO?
+Do the answers make sense given the underlying economic and accounting realities?
+(*Hint:* You can find the relevant PERMNOs on `stocknames` using the ticker "GM".)
+
+## All about CUSIPs
+
+### Exercises
+
+1. Is there any evidence of "reuse" of CUSIPs on `crsp.stocknames`?
+In other words, are there any `ncusip` or `cusip` values associated with more than one `permno`?
+
+2. The CRSP table `crsp.stocknames` includes two CUSIP-related fields, `cusip` and `ncusip`.
+What are the differences between the two fields?
+What does it mean when `ncusip` is missing, but `cusip` is present?
+
+3. Like CUSIPs, PERMNOs are security-level identifiers.
+Can a PERMNO be associated with more than one CUSIP at a given point in time?
+Can a PERMNO be associated with more than one CUSIP over time?
+
+4. Looking at entries on `crsp.stocknames` where `ticker` is `DELL`, we see two different `permno` values. 
+What explains this?
+
+5. Looking at `permno` of `11081` (Dell), we see two different CUSIP values.
+What change appears to have caused the change in CUSIP for what CRSP regards as the same security?
+
+```{r}
+#| include: false
+dbDisconnect(db, shutdown = TRUE)
+```

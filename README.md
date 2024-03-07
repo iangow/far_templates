@@ -28,7 +28,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Statistical inference  | [stat-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/stat-inf.qmd) | Use PostgreSQL template |
 | Financial statements: A first look | [fin-state.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd) | [fin-state-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-pq.qmd) |
 | Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) | 
-| Linking databases | Template to come later | Template to come later
+| Linking databases |  [identifiers.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers.qmd) | [identifiers-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers-pq.qmd) | 
 | Importing data | [web-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd) | Use PostgreSQL template |
 
 ### Part II: Capital markets research
