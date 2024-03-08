@@ -27,9 +27,10 @@ library(farr)
 
 ```{r}
 #| include: false
-#
+#| eval: false
 # Change the line below to reflect the location of the Parquet files
-# on your computer.
+# on your computer only if you have not already set DATA_DIR.
+# If you change this, change "eval: false" to "eval: true" above. 
 Sys.setenv(DATA_DIR = "~/Dropbox/pq_data")
 ```
 
