@@ -11,8 +11,9 @@ library(dplyr)
 library(DBI)
 library(farr)
 library(ggplot2)
-library(dbplyr)    # window_order()
-library(lubridate) # floor_date()
+library(dbplyr)      # window_order()
+library(lubridate)   # floor_date()
+library(kableExtra)
 ```
 
 ## The CRSP database
@@ -31,7 +32,19 @@ stocknames <- tbl(db, Id(table = "stocknames",
                          schema = "crsp"))
 
 company <- tbl(db, Id(table = "company", schema = "comp"))
+funda <- tbl(db, Id(table = "funda", schema = "comp"))
 ```
+
+```{r}
+#| include: false
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  mutate(linkenddt = coalesce(linkenddt,
+                              max(linkenddt, na.rm = TRUE)))
+```
+
 
 ### Exercises
 
@@ -137,7 +150,80 @@ stocknames |>
 5. Looking at `permno` of `11081` (Dell), we see two different CUSIP values.
 What change appears to have caused the change in CUSIP for what CRSP regards as the same security?
 
-6. Based on the results shown in @tbl-ccm-cusip-comp and @tbl-ccm-cusip-cov, what would be the main issue with using a CUSIP-based match of CRSP with Compustat?
-Choose two rows from the two tables where one of the columns is `FALSE`.
-Can you discern from the underlying tables what the issue is creating a `FALSE `value and which match (if any) is valid?
+```{r}
+#| include: false
+funda_mod <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  mutate(mkt_cap = prcc_f * csho) |>
+  select(gvkey, datadate, cusip, at, mkt_cap) 
+
+stocknames_plus <-
+  stocknames |>
+  mutate(ncusip = coalesce(ncusip, cusip))
+
+funda_cusip_link <-
+  funda_mod |>
+  mutate(ncusip = str_sub(cusip, 1L, 8L)) |>
+  inner_join(stocknames_plus, 
+             join_by(ncusip, 
+                     between(datadate, namedt, nameenddt))) |>
+  select(gvkey, datadate, permno, permco)
+
+funda_ccm_link <-
+  funda_mod |>
+  select(gvkey, datadate) |>
+  inner_join(ccm_link, 
+             join_by(gvkey, 
+                     between(datadate, linkdt, linkenddt))) |>
+  select(gvkey, datadate, lpermno, lpermco) |>
+  rename(permno = lpermno, permco = lpermco)
+
+funda_link_combined <-
+  funda_mod |>
+  select(-cusip) |>
+  left_join(funda_ccm_link, by = join_by(gvkey, datadate)) |>
+  left_join(funda_cusip_link,
+            by = join_by(gvkey, datadate), 
+            suffix = c("_ccm", "_cusip")) |>
+  mutate(same_permno = permno_ccm == permno_cusip,
+         same_permco = permco_ccm == permco_cusip,
+         has_permno_ccm = !is.na(permno_ccm),
+         has_permno_cusip = !is.na(permno_cusip)) |>
+  filter(has_permno_ccm | has_permno_cusip) |>
+  collect()
+```
+
+6. Choose a row from `funda_link_combined` where `same_permco` is `FALSE`.
+Can you discern from the underlying tables what issue is causing the difference and which match (if any) is valid?
+(*Hint:* Do rows where `gvkey %in% c("065228", "136265")` meet this condition?
+What appears to be the issue for these GVKEYs?)
 Can you conclude that the CCM-based match is the preferred one in each case?
+
+7. Choose a row from `funda_link_combined` where `has_permno_cusip` is `TRUE` and `has_permno_ccm` is `FALSE`.
+Can you discern from the underlying tables whether the CUSIP-based match is valid?
+(*Hint:* Do rows where `gvkey %in% c("033728", "346027")` meet this condition?
+What appears to be the issue for these GVKEYs?)
+
+8. Given the results shown in @tbl-ccm-cusip-comp and @tbl-ccm-cusip-cov and your answer to the previous two questions, 
+can you conclude that the CCM-based match is preferred to the CUSIP-based match in each case?
+
+```{r}
+#| label: tbl-ccm-cusip-comp
+#| tbl-cap: Comparison of CCM- and CUSIP-based links
+#| echo: false
+funda_link_combined |>
+  count(same_permno, same_permco) |>
+  kbl(booktabs = TRUE)
+```
+
+```{r}
+#| label: tbl-ccm-cusip-cov
+#| tbl-cap: Differences in coverage of CCM- and CUSIP-based link tables
+#| echo: false
+funda_link_combined |>
+  count(has_permno_ccm, has_permno_cusip) |>
+  kbl(booktabs = TRUE)
+```
+
