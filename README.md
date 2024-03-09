@@ -1,6 +1,6 @@
-# Quarto templates for [Accounting Research: An Introductory Course](https://iangow.github.io/far_book/)
+# Quarto templates for [Empirical Research in Accounting: Tools and Methods](https://iangow.github.io/far_book/)
 
-This page provides Quarto templates for use with the course book [Accounting Research: An Introductory Course](https://iangow.github.io/far_book/).
+This page provides Quarto templates for use with the course book [Empirical Research in Accounting: Tools and Methods](https://iangow.github.io/far_book/).
 
 To use a template, you will need [Quarto](https://quarto.org).
 A recent installation of [RStudio](https://posit.co/downloads/) will include Quarto.
@@ -35,7 +35,6 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
-| Capital markets research in accounting | [cap-mkts.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts.qmd) | [cap-mkts-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/cap-mkts-pq.qmd) |
 | FFJR | [ffjr.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr.qmd) | [ffjr-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/ffjr-pq.qmd) |
 | Ball and Brown (1968) | [bb68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68.qmd) | [bb68-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/bb68-pq.qmd) |
 | Beaver (1968) | [beaver68.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68.qmd) |  [beaver68-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/beaver68-pq.qmd) |
