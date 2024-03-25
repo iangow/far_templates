@@ -181,7 +181,6 @@ earn_annc_vols <-
 #| include: false
 earn_annc_summ <-
   earn_annc_vols |>
-  collect() |>
   group_by(relative_td, year) |>
   summarize(obs = n(),
             mean_ret = mean(ret, na.rm = TRUE),
@@ -189,10 +188,10 @@ earn_annc_summ <-
             mean_rel_vol = mean(rel_vol, na.rm = TRUE),
             sd_ret = sd(ret, na.rm = TRUE),
             sd_ret_mkt = sd(ret_mkt, na.rm = TRUE),
-            mad_ret = mad(ret, na.rm = TRUE),
-            mad_ret_mkt =  mad(ret_mkt, na.rm = TRUE),
+            mad_ret = mean(abs(ret), na.rm = TRUE),
+            mad_ret_mkt =  mean(abs(ret_mkt), na.rm = TRUE),
             .groups = "drop") |>
-  copy_to(db, df = _, name = "earn_annc_summ", overwrite = TRUE)
+  collect()
 ```
 
 ## Discussion questions

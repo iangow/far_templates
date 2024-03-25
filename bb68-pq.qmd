@@ -238,7 +238,7 @@ read_data <- function(start, end) {
                               quantile == "Lo 10" ~ "1",
                               grepl("^Dec ", quantile) ~
                                 sub("^Dec ", "", quantile),
-                              TRUE ~ NA_character_),
+                              TRUE ~ NA),
            decile = as.integer(decile)) |>
     filter(!is.na(decile)) |>
     select(-quantile)
@@ -390,7 +390,6 @@ Adjust the measure depicted in the replication of Figure 1 to more closely refle
 Does this tweak significantly affect the results?
 Which approach seems most appropriate?
 That of @Nichols:2004tb or that of @Ball:1968ub?
-
 4. Create an alternative version of the figure above using the sign of "news" about cash flows in the place of income news.
 Do your results broadly line up with those in Panel A of Figure 2 of @Nichols:2004tb?
 Do these results imply that accounting income is inherently more informative than cash flows from operations?
