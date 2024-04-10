@@ -1,0 +1,799 @@
+---
+title: "Exercise template for 'Post-earnings announcement drift'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+Some code chunks below are set as `eval: false` so that they are not executed.
+Together these code chunks take some time to run and it is not necessary to run them to answer the questions below.
+If you did want to run those code chunks, you could change these to `eval: true`.
+You can delete this note in preparing your submission.
+
+```{r}
+#| message: false
+#| include: false
+library(tidyverse)
+library(DBI)
+library(farr)
+library(modelsummary)
+library(furrr)
+library(dbplyr)       # window_order()
+```
+
+## Fiscal years
+
+```{r wrds-data}
+#| include: false
+db <- dbConnect(duckdb::duckdb())
+
+funda <- load_parquet(db, schema = "comp", table = "funda")
+fundq <- load_parquet(db, schema = "comp", table = "fundq")
+company <- load_parquet(db, schema = "comp", table = "company")
+
+ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", 
+                               table = "ccmxpf_lnkhist")
+
+funda_mod <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+
+fundq_mod <-
+  fundq |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+
+fundq_probs <-
+  fundq_mod |>
+  group_by(gvkey, datadate) |>
+  filter(n() > 1) |>
+  ungroup() |>
+  select(gvkey, datadate, fyearq, fqtr, fyr, rdq) |>
+  arrange(gvkey, datadate) |>
+  compute()
+
+fundq_local <-
+  fundq_mod |>
+  filter(saleq > 0 & !is.na(saleq)) |>
+  select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
+  rename(datadateq = datadate) |>
+  compute()
+
+firm_years <-
+  funda_mod |>
+  select(gvkey, datadate) |>
+  compute()
+
+link_table <-
+  fundq_mod |> 
+  rename(datadateq = datadate) |>
+  select(gvkey:fyr) |>
+  mutate(year = if_else(fyr <= 5L, fyearq - 1L, fyearq)) |>
+  mutate(month = lpad(as.character(fyr), 2L, "0")) |>
+  mutate(datadate = as.Date(paste(year, month, '01', sep = "-"))) |>
+  mutate(datadate = as.Date(datadate + months(1) - days(1))) |>
+  select(-month, -year, -fqtr) |>
+  compute()
+
+merged_data <-
+  firm_years |>
+  inner_join(link_table, by = c("gvkey", "datadate")) |>
+  inner_join(fundq_local, 
+             by = c("gvkey", "datadateq", "fyearq", "fyr")) |>
+  compute()
+
+fyear_data <-
+  funda_mod |>
+  select(fyear, datadate) |>
+  mutate(month = month(datadate),
+         year = year(datadate)) |>
+  filter(!is.na(fyear)) |>
+  collect()
+
+ni_annual <-
+  funda_mod |>
+  select(gvkey, datadate, fyr, sale, ni) |>
+  compute()
+
+ni_qtrly <-
+  fundq_mod |>
+  select(gvkey, datadate, fyr, fqtr, saleq, niq, cogsq, ibq) |>
+  rename(datadateq = datadate) |>
+  compute()
+
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  mutate(linkenddt = coalesce(linkenddt,
+                              max(linkenddt, na.rm = TRUE))) |>
+  compute()
+```
+
+```{r fms}
+#| include: false
+fms <- list(lm(fyear ~ factor(month) + year - 1, data = fyear_data),
+            lm(fyear ~ month + year, data = fyear_data))
+```
+
+```{r}
+#| output: asis
+#| message: false
+#| echo: false
+#| tbl-cap: "Regression of fyear on month indicators"
+#| label: tbl-base-fms
+modelsummary(fms,
+             estimate = "{estimate}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared", "adj.r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+```{r}
+#| include: false
+fyear_data <-
+  fyear_data |>
+  mutate(pred_1 = predict(fms[[1]]), 
+         pred_2 = predict(fms[[2]]),
+         resid_1 = pred_1 - fyear,
+         resid_2 = pred_2 - fyear)
+```
+
+```{r}
+#| label: fig-plot-sample
+#| fig-cap: Plot of fyear against datadate
+#| echo: false
+plot_sample <-
+  fyear_data |>
+  filter(year %in% c(2001, 2002)) |>
+  distinct() |>
+  arrange(datadate)
+
+plot_sample |>
+  ggplot(aes(x = datadate)) +
+  geom_point(aes(y = fyear, color = "fyear")) +
+  geom_line(aes(y = pred_1, color = "pred_1")) +
+  geom_line(aes(y = pred_2, color = "pred_2")) +
+  scale_x_date(date_breaks = "1 month") + 
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+### Exercises
+
+1. What is different between `fms[[1]]` and `fms[[2]]`?
+What is the function `factor` doing here?
+2. What is the inclusion of `- 1` doing in `fms[[1]]`? 
+Would the omission of `- 1` affect the fit of `fms[[1]]`?
+Would it affect the interpretability of results?
+Would the inclusion of `- 1` affect the fit of `fms[[2]]`?
+Would it affect the interpretability of results?
+3. Does @fig-plot-sample help understand what's going on?
+Why did we focus on a relatively short period in the plot?
+(*Hint*: What happens if you remove the line `filter(year %in% c(2001, 2002)) |>` from the code?)
+4. Using `year` and `month`, add some code along the lines of `mutate(fyear_calc = ...)` to *calculate* `fyear`.
+Check that you match `fyear` in each case.
+
+## Quarterly data
+
+### Exercises
+
+1. Pick a couple of `gvkey` values from `fundq_probs`. 
+Is it possible to construct a "clean" sequence of quarterly earnings announcements for each of these firms?
+(Here "clean" means that, at the very least, each quarter shows up just once in the series.)
+What challenges does one face in this task?
+
+2. Over the last three decades, from @fig-ni-annual, it seems that Q2 has been the most profitable on average, while in all decades, Q4 has seen the most sales.
+Can you speculate as to why this might be the case?
+
+```{r}
+#| label: fig-ni-annual
+#| fig-cap: Sales and net income by quarter over decades
+#| echo: false
+ni_merged <-
+  ni_annual |>
+  inner_join(link_table, by = c("gvkey", "datadate", "fyr")) |>
+  inner_join(ni_qtrly, by = c("gvkey", "fyr", "datadateq"))
+
+plot_data <-
+  ni_merged |> 
+  mutate(decade = str_c(as.character(as.integer(floor(fyearq / 10) * 10)), "s")) |>
+  filter(!is.na(fqtr), fyearq < 2020) |>
+  group_by(decade, fqtr) |> 
+  summarize(prop_ni = sum(niq, na.rm = TRUE)/
+              sum(ni, na.rm = TRUE),
+            prop_sale = sum(saleq, na.rm = TRUE)/
+              sum(sale, na.rm = TRUE),
+            .groups = "drop") |>
+  mutate(fqtr = as.character(fqtr)) |>
+  pivot_longer(cols = c(prop_ni, prop_sale),
+               names_to = "metric",
+               values_to = "value")
+
+plot_data |>
+  ggplot(aes(x = fqtr, y = value, fill = fqtr)) +
+  geom_bar(stat = "identity") +
+  facet_grid(metric ~ decade)
+```
+
+3. Create another plot using data in `ni_merged` that you think might be interesting?
+(Feel free to add variables to `ni_annual` or `ni_qtrly` before merging.)
+
+## Time-series properties of earnings
+
+```{r}
+#| label: params
+#| include: false
+n_qtrs <- 20
+n_firms <- 70
+focus_years <- c(1974L, 2019L)
+# See Table 1 of Foster (1977) for SICs
+sic2s <- as.character(c(29, 49, 28, 35, 32, 33, 37, 20, 26, 10, 36, 59))
+```
+
+```{r}
+#| label: companies
+#| include: false
+companies <-
+  company |>
+  mutate(sic2 = str_sub(sic, 1L, 2L)) |>
+  filter(sic2 %in% sic2s) |>
+  select(gvkey, sic2)
+```
+
+Our first step is to collect the data from `comp.fundq` that we need into a data frame that we give the name `fundq_local`.
+
+```{r}
+#| label: fundq_local
+#| cache: false
+#| include: false
+fundq_local <-
+  fundq_mod |>
+  semi_join(companies, by = "gvkey") |>
+  filter(saleq > 0 & !is.na(saleq)) |>
+  select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
+  rename(datadateq = datadate) |>
+  compute()
+```
+
+
+```{r}
+#| label: firm_years
+#| cache: false
+#| dependson: link_table, fundq_local
+firm_years <-
+  funda_mod |>
+  select(gvkey, datadate) |>
+  compute()
+
+merged_data <-
+  firm_years |>
+  inner_join(link_table, by = c("gvkey", "datadate")) |>
+  inner_join(fundq_local, 
+             by = c("gvkey", "datadateq", "fyearq", "fyr"))
+```
+
+
+```{r}
+#| label: regular_fyears
+#| dependson: firm_years
+#| cache: false
+qtr_num <-
+  merged_data |> 
+  group_by(gvkey, datadate) |> 
+  count(name= "num_quarters") |> 
+  ungroup()
+
+regular_fyears <-
+  firm_years |>
+  inner_join(qtr_num, by = c("gvkey", "datadate")) |>
+  group_by(gvkey) |>
+  arrange(gvkey, datadate) |>
+  mutate(fyear_length = datadate - lag(datadate)) |>
+  ungroup() |>
+  mutate(regular_year = num_quarters == 4 & 
+           (is.na(fyear_length) | fyear_length %in% c(365, 366))) |>
+  filter(regular_year) |>
+  select(gvkey, datadate)
+```
+
+```{r}
+#| label: reg_data
+#| cache: false
+#| dependson: firm_years, regular_fyears
+reg_data <-
+  merged_data |>
+  semi_join(companies, copy = TRUE, by = "gvkey") |>
+  semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
+  select(gvkey, datadateq, fyearq, rdq, niq, saleq) |>
+  group_by(gvkey) |>
+  arrange(datadateq) |>
+  mutate(sale_lag_1 = lag(saleq, 1L),
+         sale_lag_4 = lag(saleq, 4L),
+         sale_lag_5 = lag(saleq, 5L),
+         sale_diff = saleq - sale_lag_1,
+         sale_seas_diff = saleq - sale_lag_4,
+         lag_sale_seas_diff  = lag(sale_seas_diff, 1L),
+         ni_lag_1 = lag(niq, 1L),
+         ni_lag_4 = lag(niq, 4L),
+         ni_lag_5 = lag(niq, 5L),
+         ni_diff = niq - ni_lag_1,
+         ni_seas_diff = niq - ni_lag_4,
+         lag_ni_seas_diff  = lag(ni_seas_diff, 1L)) |>
+  ungroup()
+```
+
+```{r}
+#| label: fit_model
+#| cache: false
+fit_model <- function(gvkey, datadateq) {
+  
+  firm_data <-
+    reg_data |>
+    filter(gvkey == !!gvkey) |>
+    collect()
+
+  train_data <-
+    firm_data |>
+    filter(datadateq < !!datadateq) |>
+    top_n(n_qtrs, datadateq)
+
+  if (nrow(train_data) < n_qtrs) return(NULL)
+  
+  test_data <-
+    firm_data |>
+    filter(datadateq == !!datadateq)
+
+  # Estimate models 2 & 4
+  model_24 <-
+    train_data |>
+    group_by(gvkey) |>
+    summarize(sale_diff = mean(sale_diff, na.rm = TRUE),
+              ni_diff = mean(ni_diff, na.rm = TRUE),
+              sale_seas_diff = mean(sale_seas_diff, na.rm = TRUE),
+              ni_seas_diff = mean(ni_seas_diff, na.rm = TRUE))
+
+  # Fit models 1, 2, 3 & 4
+  df_model_1234 <-
+    test_data |>
+    # We drop these variables because we will replace them with 
+    # their means from model_24
+    select(-sale_diff, -ni_diff, -sale_seas_diff, -ni_seas_diff) |>
+    inner_join(model_24, by = "gvkey") |>
+    mutate(ni_m1 = ni_lag_4,
+           sale_m1 = sale_lag_4,
+           ni_m2 = ni_lag_4 + ni_seas_diff,
+           sale_m2 = sale_lag_4 + sale_seas_diff,
+           ni_m3 = ni_lag_1,
+           sale_m3 = sale_lag_1,
+           ni_m4 = ni_lag_1 + ni_diff,
+           sale_m4 = sale_lag_1 + sale_diff)
+
+  # Fit model 5
+  sale_fm5 <- tryCatch(lm(sale_seas_diff ~ lag_sale_seas_diff, 
+                          data = train_data, model = FALSE), 
+                       error = function(e) NULL)
+  
+  ni_fm5 <- tryCatch(lm(ni_seas_diff ~ lag_ni_seas_diff, 
+                        data = train_data, model = FALSE), 
+                     error = function(e) NULL)
+  
+  # Fit model 6
+  sale_fm6 <- tryCatch(lm(saleq ~ sale_lag_1 + sale_lag_4 + sale_lag_5, 
+                        data = train_data, model = FALSE), 
+                       error = function(e) NULL)
+  
+  ni_fm6 <- tryCatch(lm(niq ~ ni_lag_1 + ni_lag_4 + ni_lag_5,
+                          data = train_data, model = FALSE), 
+                     error = function(e) NULL)
+  
+  if (!is.null(sale_fm5) & !is.null(ni_fm5)) {
+    results <-
+      df_model_1234 |>
+      mutate(ni_m5 = ni_lag_4 + predict(ni_fm5, 
+                                        newdata = test_data)) |>
+      mutate(sale_m5 = sale_lag_4 + predict(sale_fm5, 
+                                            newdata = test_data)) |>
+      mutate(ni_m6 = predict(ni_fm6, newdata = test_data)) |>
+      mutate(sale_m6 = predict(sale_fm6, newdata = test_data))|>
+      select(gvkey, datadateq, fyearq, niq, saleq, 
+             matches("(ni|sale)_m[0-9]")) |>
+      pivot_longer(cols = ni_m1:sale_m6,
+                   names_to = "item", values_to = "value") |>
+      mutate(abe = if_else(str_detect(item, "^ni"), 
+                           abs(value - niq)/value,
+                           abs(value - saleq)/value),
+             se = abe^2) |>
+      separate(item, into = c("item", "model"), sep = "_m") |>
+      select(-niq, -saleq)
+
+    results
+  }
+}
+```
+
+
+```{r}
+#| label: test_years
+#| warning: false
+#| cache: false
+#| dependson: fit_model, reg_data
+top_firms <- 
+  reg_data |>
+  filter(fyearq %in% focus_years) |>
+  group_by(gvkey, fyearq) |>
+  summarize(total_sales = sum(saleq),
+            .groups = "drop") |>
+  group_by(fyearq) |>
+  arrange(desc(total_sales)) |>
+  mutate(rank = row_number()) |>
+  filter(rank <= n_firms)
+  
+test_years <-
+  reg_data |>
+  semi_join(top_firms, by = c("gvkey", "fyearq")) |>
+  select(gvkey, datadateq) |>
+  collect()
+```
+
+```{r}
+#| label: results_2
+#| warning: false
+#| cache: false
+results <-
+  pmap(test_years, fit_model) |>
+  list_rbind() |>
+  system_time()
+```
+
+Before graphing results comparable to Table 3 in @Foster:1977wy, let's look at the results in a more raw form.
+We address outliers with a `fix_outliers()` function.
+
+```{r}
+fix_outliers <- function(x) {
+  if_else(x < 0 | x > 1, 1, x)
+}
+```
+
+We then plot a histogram of `abe` for net income for each of the `r length(test_years)` for all six models in @fig-abe-histo.
+
+\indexc{facet\_grid()} \indexc{geom\_histogram()}
+```{r}
+#| label: fig-abe-histo
+#| fig-cap: Histograms of abe
+#| fig-alt: "Histograms of abnormal earnings by model for six models discussed in the text by year (either 1974 or 2019). Plots show a concentration of observations at 1, with the concentration increasing from 1974 to 2019."
+results |> 
+  filter(item == "ni") |>
+  filter(!is.na(abe)) |>
+  mutate(abe = fix_outliers(abe)) |>
+  ggplot(aes(x = abe)) + 
+  geom_histogram(bins = 40) + 
+  facet_grid(model ~ fyearq)
+```
+
+Next, we rank the models for each observation.
+
+\indexc{pivot\_wider()} \indexc{row\_number()}
+```{r}
+model_ranks <-
+  results |>
+  group_by(gvkey, datadateq, item) |>
+  arrange(gvkey, datadateq, item, abe) |>
+  mutate(rank = row_number()) |>
+  group_by(fyearq, item, model) |>
+  summarize(avg_rank = mean(rank, na.rm = TRUE),
+            .groups = "drop") |>
+  pivot_wider(names_from = c("model"), values_from = "avg_rank")
+```
+
+```{r}
+#| label: fig-table-3
+#| fig-cap: Plot of results like Table 3 of Foster (1977)
+#| fig-alt: "Plots of results analogous to those in Table 3 of Foster (1977).  Plots show that Model 5 generally performs best for both net income and sales. Error rates are generally much higher for net income models than for sales models."
+results_summ |>  
+  pivot_longer(cols = mabe:mse, names_to = "metric", values_to = "value") |>
+  ggplot(aes(x = model, y = value, fill = model)) +
+  geom_bar(stat = "identity") +
+  facet_grid(fyearq ~ item + metric) +
+  theme(legend.position = "none")
+```
+
+
+### Exercises
+
+1. What does the `fix_outliers()` function do? 
+Does @Foster:1977wy do anything to address outliers?
+If so, how does the approach in @Foster:1977wy compare to that of `fix_outliers()`?
+Do you agree with the approach taken in `fix_outliers`?
+What would you do differently?
+
+2. How do the results in Figure @fig-table_3) compare with those in @Foster:1977wy?
+
+3. What do you make of the significantly "worse" performance of models predicting `ni` than those predicting `sale`?
+Does this imply that `ni` is simply more difficult to forecast?
+Can you suggest an alternative approach to measuring performance that might place these models on a more "level playing field"?
+
+
+## Post-earnings announcement drift
+
+```{r reg_data_fos}
+#| eval: true
+#| include: false
+qtr_num <-
+  merged_data |> 
+  group_by(gvkey, datadate) |> 
+  count(name= "num_quarters") |> 
+  ungroup()
+
+regular_fyears <-
+  firm_years |>
+  inner_join(qtr_num, by = c("gvkey", "datadate")) |>
+  group_by(gvkey) |>
+  window_order(gvkey, datadate) |>
+  mutate(fyear_length = datadate - lag(datadate)) |>
+  ungroup() |>
+  mutate(regular_year = num_quarters == 4 & 
+           (is.na(fyear_length) | fyear_length %in% c(365, 366))) |>
+  filter(regular_year) |>
+  select(gvkey, datadate) |>
+  compute()
+
+reg_data_fos <-
+  merged_data |>
+  semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
+  select(gvkey, datadateq, fyearq, rdq, ibq) |>
+  group_by(gvkey) |>
+  window_order(datadateq) |>
+  mutate(ib_lag_4 = lag(ibq, 4L),
+         ib_seas_diff = ibq - ib_lag_4,
+         lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
+         qtr = quarter(datadateq, with_year = TRUE)) |>
+  ungroup() |>
+  compute()
+```
+
+```{r}
+#| eval: true
+#| include: false
+fit_model_fos <- function(gvkey, quarter) {
+
+  n_qtrs <- 24
+  min_qtrs_fos <- 16
+  min_qtrs <- 10
+  
+  firm_data <-
+    reg_data_fos |>
+    filter(gvkey == !!gvkey)
+
+  train_data <-
+    firm_data |>
+    filter(qtr < !!quarter) |>
+    top_n(n_qtrs, datadateq)
+
+  test_data <-
+    firm_data |>
+    filter(qtr == !!quarter)
+
+  if (nrow(train_data) < min_qtrs) return(NULL)
+  if (nrow(train_data) >= min_qtrs_fos) {
+    # Fit model 5
+    ib_fm <- tryCatch(lm(ib_seas_diff ~ lag_ib_seas_diff, 
+                        data = train_data, na.action = na.exclude,
+                        model = FALSE), 
+                     error = function(e) NULL)
+  } else {
+    ib_fm <- NULL
+  }
+  
+  if (!is.null(ib_fm)) {
+    train_results <- 
+      train_data |>
+      mutate(fib = ib_lag_4 + predict(ib_fm))
+  } else {
+    train_results <- 
+      train_data |>
+      mutate(fib = ib_lag_4)
+  }
+  
+  denom_m2 <- 
+    train_results |>
+      mutate(fe = ibq - fib) |>
+      pull() |>
+      sd()
+    
+  if (is.null(ib_fm)) {
+    results <- 
+      test_data |>
+      mutate(fib = ib_lag_4) 
+  } else {
+    results <- 
+      test_data |>
+      mutate(fib = ib_lag_4 + predict(ib_fm, newdata = test_data))
+  }
+    
+  results |>
+    mutate(fe1 = (ibq - fib)/abs(ibq),
+           fe2 = (ibq - fib)/denom_m2)
+}
+```
+
+```{r results}
+#| eval: true
+#| include: false
+quarters <-
+  reg_data_fos |> 
+  filter(qtr >= "2010.1", qtr < "2020.1") |>
+  select(qtr) |> 
+  distinct() |>
+  arrange(qtr) |>
+  pull()
+  
+get_results <- function(quarter) {
+  
+  gvkeys <- 
+    reg_data_fos |>
+    filter(qtr == quarter) |>
+    select(gvkey) |>
+    distinct() |>
+    pull()
+  
+  map2(gvkeys, quarter, fit_model_fos) |>
+    list_rbind()
+}  
+```
+
+```{r}
+#| eval: false
+#| include: false
+#| label: results-2
+results <- bind_rows(lapply(quarters, get_results))
+```
+
+```{r}
+#| eval: false
+#| include: false
+get_deciles <- function(x) {
+  breaks <- quantile(x, probs = seq(from = 0, to = 1, by = 0.1),
+                     na.rm = TRUE)
+  breaks[length(breaks)] <- Inf
+  list(breaks)
+}
+
+decile_cuts <-
+  results |>
+  group_by(qtr) |>
+  summarize(fe1_deciles = get_deciles(fe1),
+            fe2_deciles = get_deciles(fe2),
+            .groups = "drop") |>
+  arrange(qtr) |>
+  mutate(fe1_deciles_lag = lag(fe1_deciles),
+         fe2_deciles_lag = lag(fe2_deciles))
+```
+
+```{r results_deciles}
+#| eval: false
+#| include: false
+results_deciles <-
+  results |>
+  inner_join(decile_cuts, by = "qtr") |>
+  rowwise() |>
+  mutate(fe1_decile = cut(fe1, fe1_deciles_lag, labels = FALSE),
+         fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) |>
+  filter(!is.na(fe1_decile) | !is.na(fe2_decile)) |>
+  select(-matches("^fe[12]_deciles"))
+```
+
+```{r rets}
+#| eval: false
+#| include: false
+link_table <-
+  results_deciles |>
+  select(gvkey, rdq) |>
+  inner_join(ccm_link, join_by(gvkey, rdq >= linkdt, rdq <= linkenddt)) |>
+  mutate(permno = as.integer(lpermno)) |>
+  select(gvkey, rdq, permno)
+
+rets <- 
+  get_event_rets(link_table, pg, 
+                 event_date = "rdq", win_start = -60, win_end = 60) |>
+  nest_by(rdq, permno)
+```
+
+Finally, we calculate mean **size-adjusted returns** for each `decile` at each trading day relative to the earnings announcement.
+There are some issues implicit in these calculations that are discussed in @Bernard:1989uu and alluded to in the discussion questions at the end of this section.
+Here we are largely following the approach described on p.7 of @Bernard:1989uu.
+
+```{r plot_data}
+#| eval: false
+#| include: false
+plot_data <-
+  results_deciles |>
+  mutate(decile = fe2_decile) |>
+  inner_join(link_table, by = c("gvkey", "rdq"),
+             relationship = "many-to-many") |>
+  inner_join(rets, by = c("rdq", "permno")) |>
+  unnest(cols = c(data)) |>
+  group_by(decile, relative_td) |>
+  summarize(ar = mean(ret - decret, na.rm = TRUE),
+              .groups = "drop") 
+``` 
+
+```{r}
+#| label: plot-pre
+#| fig-cap: Pre-announcement returns
+#| eval: false
+#| echo: false
+plot_data |>
+  filter(relative_td <= 0) |>
+  filter(!is.na(decile)) |>
+  mutate(decile = as.factor(decile)) |>
+  mutate(first_day = relative_td == min(relative_td),
+         last_day = relative_td == max(relative_td),
+         ar = if_else(first_day, 0, ar),
+         label = if_else(last_day, as.character(decile), NA_character_)) |>
+  select(-first_day) |>
+  group_by(decile) |>
+  arrange(relative_td) |>
+  mutate(car = cumsum(ar)) |>
+  ggplot(aes(x = relative_td, y = car, 
+             group = decile, color = decile)) + 
+  geom_line() +
+  geom_label(aes(label = label), na.rm = TRUE) +
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: plot-post
+#| fig-cap: Post-announcement returns
+#| output: asis
+#| eval: false
+#| echo: false
+plot_data |>
+  filter(relative_td >= 0) |>
+  filter(!is.na(decile)) |>
+  mutate(decile = as.factor(decile)) |>
+  mutate(first_day = relative_td == min(relative_td),
+         last_day = relative_td == max(relative_td),
+         ar = if_else(first_day, 0, ar),
+         label = if_else(last_day, as.character(decile), NA_character_)) |>
+  group_by(decile) |>
+  arrange(relative_td) |>
+  mutate(car = cumsum(ar)) |>
+  ggplot(aes(x = relative_td, y = car, group = decile, color = decile)) + 
+  geom_line() +
+  geom_label(aes(label = label), na.rm = TRUE) +
+  theme(legend.position = "none")
+```
+
+### Discussion questions
+
+1. A common feature of @Bernard:1989uu and @Ball:1968ub is that both were addressing issues with "conventional wisdom" at their respective times. 
+How had conventional wisdom changed in the years between 1968 and 1989?
+
+2.	Evaluate the introduction of @Bernard:1989uu.
+How clear is the research question to you from reading this? 
+How does this introduction compare with other papers we've read in the course? 
+With other papers you have seen?
+
+3. How persuasive do you find @Bernard:1989uu to be? 
+(Obviously answering this one requires reading the paper fairly closely.)
+
+4. The analysis above considers the 13-year period from 1974 to 1986.
+What changes would you need to make to the code to run the analysis for the 10-year period from 2010 to 2019?
+(If you choose to make this change and run the code, what do you notice about the profile of returns in the post-announcement period?
+Does it seem necessary to make an additional tweak to the code to address this?)
+
+5. Considering a single stock, what trading strategy is implicit in calculating `ar` as `ret - decret`?
+
+6. In calculating mean returns by `decile` and `relative_td` (i.e., first using `group_by(decile, relative_td)` and then calculating `ar` by aggregating `mean(ret - decret, na.rm = TRUE))`, are we making assumptions about the trading strategy?
+What issues are created by this trading strategy?
+Can you suggest an alternative trading strategy?
+What changes to the code would be needed to implement this alternative?
+
+7. Is it appropriate to *add* returns to get cumulative abnormal returns as is done in `car = cumsum(ar)`? 
+What would be an alternative approach?
+
+```{r}
+#| include: false
+dbDisconnect(db)
+```
