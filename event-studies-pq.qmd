@@ -8,13 +8,11 @@ bibliography: book.bib
 ```{r}
 #| message: false
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
+library(tidyverse)
 library(DBI)
 library(dbplyr)       # For window_order()
-library(ggplot2)
 library(farr)
 library(modelsummary)
-library(farr)
 ```
 
 ## Overview
