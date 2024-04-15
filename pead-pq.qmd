@@ -58,57 +58,69 @@ fundq_local <-
   filter(saleq > 0 & !is.na(saleq)) |>
   select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
   rename(datadateq = datadate) |>
-  compute()
-
-firm_years <-
-  funda_mod |>
-  select(gvkey, datadate) |>
-  compute()
+  collect()
 
 link_table <-
   fundq_mod |> 
   rename(datadateq = datadate) |>
   select(gvkey:fyr) |>
-  mutate(year = if_else(fyr <= 5L, fyearq - 1L, fyearq)) |>
+  mutate(year = if_else(fyr <= 5L, fyearq + 1L, fyearq)) |>
   mutate(month = lpad(as.character(fyr), 2L, "0")) |>
-  mutate(datadate = as.Date(paste(year, month, '01', sep = "-"))) |>
+  mutate(datadate = as.Date(str_c(year, month, '01', sep = "-"))) |>
   mutate(datadate = as.Date(datadate + months(1) - days(1))) |>
   select(-month, -year, -fqtr) |>
-  compute()
+  collect()
+
+firm_years <-
+  funda_mod |>
+  select(gvkey, datadate) |>
+  collect()
 
 merged_data <-
   firm_years |>
   inner_join(link_table, by = c("gvkey", "datadate")) |>
   inner_join(fundq_local, 
-             by = c("gvkey", "datadateq", "fyearq", "fyr")) |>
-  compute()
+             by = c("gvkey", "datadateq", "fyearq", "fyr"))
 
 fyear_data <-
   funda_mod |>
   select(fyear, datadate) |>
+  distinct() |>
   mutate(month = month(datadate),
          year = year(datadate)) |>
   filter(!is.na(fyear)) |>
-  collect()
+  collect() 
 
 ni_annual <-
   funda_mod |>
   select(gvkey, datadate, fyr, sale, ni) |>
-  compute()
+  collect()
 
 ni_qtrly <-
   fundq_mod |>
-  select(gvkey, datadate, fyr, fqtr, saleq, niq, cogsq, ibq) |>
+  select(gvkey, datadate, fyr, fqtr, saleq, niq, ibq) |>
   rename(datadateq = datadate) |>
-  compute()
+  collect()
 
-ccm_link <-
-  ccmxpf_lnkhist |>
-  filter(linktype %in% c("LC", "LU", "LS"),
-         linkprim %in% c("C", "P")) |>
-  mutate(linkenddt = coalesce(linkenddt,
-                              max(linkenddt, na.rm = TRUE))) |>
-  compute()
+ni_merged <-
+  ni_annual |>
+  inner_join(link_table, by = c("gvkey", "datadate", "fyr")) |>
+  inner_join(ni_qtrly, by = c("gvkey", "fyr", "datadateq"))
+
+plot_data <-
+  ni_merged |> 
+  mutate(decade = str_c(floor(fyearq / 10) * 10, "s")) |>
+  filter(!is.na(fqtr), fyearq < 2020) |>
+  group_by(decade, fqtr) |> 
+  summarize(prop_ni = sum(niq, na.rm = TRUE)/
+              sum(ni, na.rm = TRUE),
+            prop_sale = sum(saleq, na.rm = TRUE)/
+              sum(sale, na.rm = TRUE),
+            .groups = "drop") |>
+  mutate(fqtr = factor(fqtr)) |>
+  pivot_longer(cols = c(prop_ni, prop_sale),
+               names_to = "metric",
+               values_to = "value")
 ```
 
 ```{r fms}
@@ -241,8 +253,6 @@ companies <-
   select(gvkey, sic2)
 ```
 
-Our first step is to collect the data from `comp.fundq` that we need into a data frame that we give the name `fundq_local`.
-
 ```{r}
 #| label: fundq_local
 #| cache: false
@@ -253,7 +263,7 @@ fundq_local <-
   filter(saleq > 0 & !is.na(saleq)) |>
   select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
   rename(datadateq = datadate) |>
-  compute()
+  collect()
 ```
 
 
@@ -261,10 +271,11 @@ fundq_local <-
 #| label: firm_years
 #| cache: false
 #| dependson: link_table, fundq_local
+#| include: false
 firm_years <-
   funda_mod |>
   select(gvkey, datadate) |>
-  compute()
+  collect()
 
 merged_data <-
   firm_years |>
@@ -278,6 +289,7 @@ merged_data <-
 #| label: regular_fyears
 #| dependson: firm_years
 #| cache: false
+#| include: false
 qtr_num <-
   merged_data |> 
   group_by(gvkey, datadate) |> 
@@ -301,6 +313,7 @@ regular_fyears <-
 #| label: reg_data
 #| cache: false
 #| dependson: firm_years, regular_fyears
+#| include: false
 reg_data <-
   merged_data |>
   semi_join(companies, copy = TRUE, by = "gvkey") |>
@@ -326,12 +339,12 @@ reg_data <-
 ```{r}
 #| label: fit_model
 #| cache: false
+#| include: false
 fit_model <- function(gvkey, datadateq) {
   
   firm_data <-
     reg_data |>
-    filter(gvkey == !!gvkey) |>
-    collect()
+    filter(gvkey == !!gvkey)
 
   train_data <-
     firm_data |>
@@ -418,6 +431,7 @@ fit_model <- function(gvkey, datadateq) {
 #| warning: false
 #| cache: false
 #| dependson: fit_model, reg_data
+#| include: false
 top_firms <- 
   reg_data |>
   filter(fyearq %in% focus_years) |>
@@ -432,34 +446,31 @@ top_firms <-
 test_years <-
   reg_data |>
   semi_join(top_firms, by = c("gvkey", "fyearq")) |>
-  select(gvkey, datadateq) |>
-  collect()
+  select(gvkey, datadateq)
 ```
 
 ```{r}
 #| label: results_2
 #| warning: false
 #| cache: false
+#| include: false
 results <-
   pmap(test_years, fit_model) |>
   list_rbind() |>
   system_time()
 ```
 
-Before graphing results comparable to Table 3 in @Foster:1977wy, let's look at the results in a more raw form.
-We address outliers with a `fix_outliers()` function.
-
 ```{r}
+#| include: false
 fix_outliers <- function(x) {
   if_else(x < 0 | x > 1, 1, x)
 }
 ```
 
-We then plot a histogram of `abe` for net income for each of the `r length(test_years)` for all six models in @fig-abe-histo.
-
-\indexc{facet\_grid()} \indexc{geom\_histogram()}
 ```{r}
 #| label: fig-abe-histo
+#| echo: false
+#| include: false
 #| fig-cap: Histograms of abe
 #| fig-alt: "Histograms of abnormal earnings by model for six models discussed in the text by year (either 1974 or 2019). Plots show a concentration of observations at 1, with the concentration increasing from 1974 to 2019."
 results |> 
@@ -471,10 +482,8 @@ results |>
   facet_grid(model ~ fyearq)
 ```
 
-Next, we rank the models for each observation.
-
-\indexc{pivot\_wider()} \indexc{row\_number()}
 ```{r}
+#| include: false
 model_ranks <-
   results |>
   group_by(gvkey, datadateq, item) |>
@@ -487,7 +496,20 @@ model_ranks <-
 ```
 
 ```{r}
+#| include: false
+results_summ <-
+  results |>
+  mutate(abe = fix_outliers(abe),
+         se = fix_outliers(se)) |>
+  group_by(fyearq, item, model) |>
+  summarize(mabe = mean(abe, na.rm=TRUE),
+            mse = mean(se, na.rm=TRUE),
+            .groups = "drop") 
+```
+
+```{r}
 #| label: fig-table-3
+#| echo: false
 #| fig-cap: Plot of results like Table 3 of Foster (1977)
 #| fig-alt: "Plots of results analogous to those in Table 3 of Foster (1977).  Plots show that Model 5 generally performs best for both net income and sales. Error rates are generally much higher for net income models than for sales models."
 results_summ |>  
@@ -504,15 +526,14 @@ results_summ |>
 1. What does the `fix_outliers()` function do? 
 Does @Foster:1977wy do anything to address outliers?
 If so, how does the approach in @Foster:1977wy compare to that of `fix_outliers()`?
-Do you agree with the approach taken in `fix_outliers`?
+Do you agree with the approach taken in `fix_outliers()`?
 What would you do differently?
 
-2. How do the results in Figure @fig-table_3) compare with those in @Foster:1977wy?
+2. How do the results in @fig-table-3 compare with those in @Foster:1977wy?
 
 3. What do you make of the significantly "worse" performance of models predicting `ni` than those predicting `sale`?
 Does this imply that `ni` is simply more difficult to forecast?
 Can you suggest an alternative approach to measuring performance that might place these models on a more "level playing field"?
-
 
 ## Post-earnings announcement drift
 
@@ -529,21 +550,20 @@ regular_fyears <-
   firm_years |>
   inner_join(qtr_num, by = c("gvkey", "datadate")) |>
   group_by(gvkey) |>
-  window_order(gvkey, datadate) |>
+  arrange(gvkey, datadate) |>
   mutate(fyear_length = datadate - lag(datadate)) |>
   ungroup() |>
   mutate(regular_year = num_quarters == 4 & 
            (is.na(fyear_length) | fyear_length %in% c(365, 366))) |>
   filter(regular_year) |>
-  select(gvkey, datadate) |>
-  compute()
+  select(gvkey, datadate)
 
 reg_data_fos <-
   merged_data |>
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
   select(gvkey, datadateq, fyearq, rdq, ibq) |>
   group_by(gvkey) |>
-  window_order(datadateq) |>
+  arrange(datadateq) |>
   mutate(ib_lag_4 = lag(ibq, 4L),
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
@@ -646,7 +666,11 @@ get_results <- function(quarter) {
 #| eval: false
 #| include: false
 #| label: results-2
-results <- bind_rows(lapply(quarters, get_results))
+results <- 
+  quarters |> 
+  map(get_results) |> 
+  list_rbind() |>
+  system_time()
 ```
 
 ```{r}
