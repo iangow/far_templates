@@ -270,7 +270,6 @@ fundq_local <-
 ```{r}
 #| label: firm_years
 #| cache: false
-#| dependson: link_table, fundq_local
 #| include: false
 firm_years <-
   funda_mod |>
@@ -287,7 +286,6 @@ merged_data <-
 
 ```{r}
 #| label: regular_fyears
-#| dependson: firm_years
 #| cache: false
 #| include: false
 qtr_num <-
@@ -312,7 +310,6 @@ regular_fyears <-
 ```{r}
 #| label: reg_data
 #| cache: false
-#| dependson: firm_years, regular_fyears
 #| include: false
 reg_data <-
   merged_data |>
@@ -430,7 +427,6 @@ fit_model <- function(gvkey, datadateq) {
 #| label: test_years
 #| warning: false
 #| cache: false
-#| dependson: fit_model, reg_data
 #| include: false
 top_firms <- 
   reg_data |>
@@ -537,27 +533,10 @@ Can you suggest an alternative approach to measuring performance that might plac
 
 ## Post-earnings announcement drift
 
-```{r reg_data_fos}
-#| eval: true
-#| include: false
-qtr_num <-
-  merged_data |> 
-  group_by(gvkey, datadate) |> 
-  count(name= "num_quarters") |> 
-  ungroup()
-
-regular_fyears <-
-  firm_years |>
-  inner_join(qtr_num, by = c("gvkey", "datadate")) |>
-  group_by(gvkey) |>
-  arrange(gvkey, datadate) |>
-  mutate(fyear_length = datadate - lag(datadate)) |>
-  ungroup() |>
-  mutate(regular_year = num_quarters == 4 & 
-           (is.na(fyear_length) | fyear_length %in% c(365, 366))) |>
-  filter(regular_year) |>
-  select(gvkey, datadate)
-
+```{r}
+#| label: reg_data_fos
+#| cache: false
+#| echo: false
 reg_data_fos <-
   merged_data |>
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
@@ -568,13 +547,11 @@ reg_data_fos <-
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
          qtr = quarter(datadateq, with_year = TRUE)) |>
-  ungroup() |>
-  compute()
+  ungroup()
 ```
 
 ```{r}
-#| eval: true
-#| include: false
+#| echo: false
 fit_model_fos <- function(gvkey, quarter) {
 
   n_qtrs <- 24
@@ -600,7 +577,7 @@ fit_model_fos <- function(gvkey, quarter) {
     ib_fm <- tryCatch(lm(ib_seas_diff ~ lag_ib_seas_diff, 
                         data = train_data, na.action = na.exclude,
                         model = FALSE), 
-                     error = function(e) NULL)
+                      error = function(e) NULL)
   } else {
     ib_fm <- NULL
   }
@@ -632,22 +609,26 @@ fit_model_fos <- function(gvkey, quarter) {
   }
     
   results |>
-    mutate(fe1 = (ibq - fib)/abs(ibq),
-           fe2 = (ibq - fib)/denom_m2)
+    mutate(fe1 = (ibq - fib) / abs(ibq),
+           fe2 = (ibq - fib) / denom_m2)
 }
 ```
 
-```{r results}
-#| eval: true
-#| include: false
+```{r}
+#| label: results
+#| cache: false
+#| echo: false
 quarters <-
   reg_data_fos |> 
-  filter(qtr >= "2010.1", qtr < "2020.1") |>
+  filter(qtr >= 1974, qtr < 1987) |>
   select(qtr) |> 
   distinct() |>
   arrange(qtr) |>
   pull()
-  
+```
+
+```{r}
+#| echo: false
 get_results <- function(quarter) {
   
   gvkeys <- 
@@ -663,19 +644,21 @@ get_results <- function(quarter) {
 ```
 
 ```{r}
-#| eval: false
-#| include: false
-#| label: results-2
+#| label: results_3
+#| include: true
+#| cache: true
+#| warning: false
+#| echo: false
+plan(multisession)
+
 results <- 
   quarters |> 
-  map(get_results) |> 
-  list_rbind() |>
-  system_time()
+  future_map(get_results) |> 
+  list_rbind()
 ```
 
 ```{r}
-#| eval: false
-#| include: false
+#| echo: false
 get_deciles <- function(x) {
   breaks <- quantile(x, probs = seq(from = 0, to = 1, by = 0.1),
                      na.rm = TRUE)
@@ -694,9 +677,10 @@ decile_cuts <-
          fe2_deciles_lag = lag(fe2_deciles))
 ```
 
-```{r results_deciles}
-#| eval: false
-#| include: false
+```{r}
+#| label: results_deciles
+#| cache: false
+#| echo: false
 results_deciles <-
   results |>
   inner_join(decile_cuts, by = "qtr") |>
@@ -704,48 +688,61 @@ results_deciles <-
   mutate(fe1_decile = cut(fe1, fe1_deciles_lag, labels = FALSE),
          fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) |>
   filter(!is.na(fe1_decile) | !is.na(fe2_decile)) |>
+  ungroup() |>
   select(-matches("^fe[12]_deciles"))
 ```
 
-```{r rets}
-#| eval: false
-#| include: false
+```{r}
+#| label: link_table2
+#| echo: false
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  mutate(linkenddt = coalesce(linkenddt,
+                              max(linkenddt, na.rm = TRUE))) |>
+  rename(permno = lpermno) |>
+  collect()
+  
 link_table <-
   results_deciles |>
   select(gvkey, rdq) |>
-  inner_join(ccm_link, join_by(gvkey, rdq >= linkdt, rdq <= linkenddt)) |>
-  mutate(permno = as.integer(lpermno)) |>
+  inner_join(ccm_link, 
+             join_by(gvkey, between(rdq, linkdt, linkenddt))) |>
   select(gvkey, rdq, permno)
+```
 
+```{r}
+#| label: rets
+#| cache: false
+#| echo: false
 rets <- 
-  get_event_rets(link_table, pg, 
-                 event_date = "rdq", win_start = -60, win_end = 60) |>
+  link_table |>
+  get_event_rets(db, event_date = "rdq", 
+                 win_start = -60, win_end = 60) |>
   nest_by(rdq, permno)
 ```
 
-Finally, we calculate mean **size-adjusted returns** for each `decile` at each trading day relative to the earnings announcement.
-There are some issues implicit in these calculations that are discussed in @Bernard:1989uu and alluded to in the discussion questions at the end of this section.
-Here we are largely following the approach described on p.7 of @Bernard:1989uu.
-
-```{r plot_data}
-#| eval: false
-#| include: false
+```{r}
+#| echo: false
 plot_data <-
   results_deciles |>
+  filter(!is.na(rdq)) |>
+  group_by(gvkey, rdq) |>
+  filter(datadateq == max(datadateq)) |>
+  ungroup() |>
   mutate(decile = fe2_decile) |>
-  inner_join(link_table, by = c("gvkey", "rdq"),
-             relationship = "many-to-many") |>
+  inner_join(link_table, by = c("gvkey", "rdq")) |>
   inner_join(rets, by = c("rdq", "permno")) |>
   unnest(cols = c(data)) |>
   group_by(decile, relative_td) |>
   summarize(ar = mean(ret - decret, na.rm = TRUE),
               .groups = "drop") 
-``` 
+```
 
 ```{r}
-#| label: plot-pre
+#| label: fig-pre
 #| fig-cap: Pre-announcement returns
-#| eval: false
 #| echo: false
 plot_data |>
   filter(relative_td <= 0) |>
@@ -754,7 +751,7 @@ plot_data |>
   mutate(first_day = relative_td == min(relative_td),
          last_day = relative_td == max(relative_td),
          ar = if_else(first_day, 0, ar),
-         label = if_else(last_day, as.character(decile), NA_character_)) |>
+         label = if_else(last_day, as.character(decile), NA)) |>
   select(-first_day) |>
   group_by(decile) |>
   arrange(relative_td) |>
@@ -767,10 +764,9 @@ plot_data |>
 ```
 
 ```{r}
-#| label: plot-post
+#| label: fig-post
+#| results: asis
 #| fig-cap: Post-announcement returns
-#| output: asis
-#| eval: false
 #| echo: false
 plot_data |>
   filter(relative_td >= 0) |>
@@ -779,7 +775,7 @@ plot_data |>
   mutate(first_day = relative_td == min(relative_td),
          last_day = relative_td == max(relative_td),
          ar = if_else(first_day, 0, ar),
-         label = if_else(last_day, as.character(decile), NA_character_)) |>
+         label = if_else(last_day, as.character(decile), NA)) |>
   group_by(decile) |>
   arrange(relative_td) |>
   mutate(car = cumsum(ar)) |>
@@ -787,6 +783,11 @@ plot_data |>
   geom_line() +
   geom_label(aes(label = label), na.rm = TRUE) +
   theme(legend.position = "none")
+```
+
+```{r}
+#| echo: false
+dbDisconnect(db)
 ```
 
 ### Discussion questions
