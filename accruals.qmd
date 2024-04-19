@@ -378,8 +378,7 @@ crsp_link <-
   mutate(start_month = as.Date(floor_date(datadate + months(4L), "month")),
          end_month = as.Date(floor_date(datadate + months(16L) - days(1L), 
                                         "month")),
-         month = floor_date(datadate, 'month')) |>
-  compute()
+         month = floor_date(datadate, 'month'))
 
 crsp_data <-
   msf |>
