@@ -291,12 +291,12 @@ me_breakpoints <- get_me_breakpoints()
 #| message: false 
 #| warning: false
 #| include: false
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+db <- dbConnect(duckdb::duckdb())
 
-funda <- tbl(db, Id(schema = "comp", table = "funda"))
-company <- tbl(db, Id(schema = "comp", table = "company"))
-ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
-msf <- tbl(db, Id(schema = "crsp", table = "msf"))
+funda <- load_parquet(db, schema = "comp", table = "funda")
+company <- load_parquet(db, schema = "comp", table = "company")
+ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", table = "ccmxpf_lnkhist")
+msf <- load_parquet(db, schema = "crsp", table = "msf")
 
 sics <- 
   company |>
