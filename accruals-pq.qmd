@@ -272,7 +272,6 @@ How might we modify the simulation to incorporate the missing elements?
 
 ## Replicating @Sloan:1996wd
 
-
 ```{r}
 #| label: size-rets
 #| include: false 
