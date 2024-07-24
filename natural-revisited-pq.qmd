@@ -1,0 +1,754 @@
+---
+title: "Exercise template for 'Natural experiments revisited'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| label: libraries
+#| include: false
+library(fixest)
+library(modelsummary)
+library(dplyr, warn.conflicts = FALSE)
+library(lubridate)   # For year() and month()
+library(tidyr)       # unnest(), expand_grid(), pivot_longer() & separate()
+library(broom)       # For tidy()
+library(stringr)     # For str_detect() and str_match()
+library(DBI)
+library(ggplot2)
+library(farr)
+library(purrr)
+```
+
+## A replication crisis? {#sec-rep-crisis}
+
+### Discussion questions
+
+1. @Simmons:2011ux provide a more in-depth examination of issues with the TEP discussed in @Bloomfield:2018va [pp. 318-9].
+How plausible do you find the two experiments studied @Simmons:2011ux as representations of accounting research in practice?
+What differences are likely to exist in empirical accounting research using archival data?
+
+2. @Bloomfield:2018va [pp. 326] say "we exclude @Hail:2018wo from our tabulation [of results] because it does not state formal hypotheses."
+Given the lack of formal hypotheses, do you think it made sense to include the [proposal](https://research.chicagobooth.edu/-/media/research/arc/docs/jar-annual-conference-papers/hail-tahoun-wang-accepted-proposal.pdf) from @Hail:2018wo in the 2017 JAR conference?
+Does the REP have relevance to papers without formal hypotheses?
+Does the absence of formal hypotheses imply that @Hail:2018wo were not testing hypotheses?
+Is your answer to the last question consistent with how @Hail:2018wo [p. 650] discuss results reported in Table 5 of that paper?
+
+
+3. According the analysis of @Bloomfield:2018va, there were 218 tests of 30 hypotheses and different hypotheses had different numbers of tests.
+In the following analysis, we assume 30 hypotheses with each having 7 tests (for a total of 210 tests).
+
+<ul>
+```{r}
+set.seed(2021)
+results <-
+  expand_grid(hypothesis = 1:30, test = 1:7) |>
+  mutate(p = runif(nrow(pick(everything()))),
+         reject = p < 0.05)
+
+results |> 
+  group_by(hypothesis) |>
+  summarize(reject_one = any(reject), .groups = "drop") |>
+  count(reject_one)
+```
+
+</ul>
+<ul>
+Does this analysis suggest an alternative possible interpretation of the results than the "far less strongly than is typical" conclusion offered by @Bloomfield:2018va.
+Does choosing a different value for `set.seed()` alter the tenor of the results from the analysis above?
+How might you make the analysis above more definitive?
+</ul>
+
+
+4. @Bloomfield:2018va [p.326] argue "it is easy to imagine revisions of several conference papers would allow them to report results of strength comparable to those found in most papers published under TEP."
+For example, "@Li:2018vh yielded no statistically significant support for their main hypotheses.
+However, they found significant results in their planned additional analyses that are consistent with informal predictions included in the accepted proposal. ...
+[In light of this evidence] we are not ready to conclude that the studies in the issue actually provide weaker support for their predictions than most studies published under TEP." [-@Bloomfield:2018va, p.326].
+Can these results instead be interpreted as saying something about the strength of results of studies published under TEP?
+
+5. Do you believe that it would be feasible for REP to become the dominant research paradigm in accounting research?
+What challenges would such a development face?
+
+6. A respondent to the survey conducted by @Bloomfield:2018va [p. 337] wrote:
+
+<ul>
+> I do not find the abundance of "null results" surprising.
+It could have been discovered from one's own experience.
+Research is an iterative process and it involves learning.
+I am not sure if there is anything useful that we discover in the research process by shutting down the learning channel; especially with the research questions that are very novel and we do not know much about.
+
+Comment on this remark.
+What do you think the respondent has in mind with regard to the "learning channel"?
+Do you agree that the REP shuts down this channel?
+</ul>
+
+## The Reg SHO experiment {#sec-reg-sho}
+
+### The SHO pilot sample {#sec-sho-pilot}
+
+```{r}
+#| include: false
+db <- dbConnect(duckdb::duckdb())
+
+mse <- load_parquet(db, schema = "crsp", table = "mse")
+msf <- load_parquet(db, schema = "crsp", table = "msf")
+stocknames <- load_parquet(db, schema = "crsp", table = "stocknames")
+dseexchdates <- load_parquet(db, schema = "crsp", table = "dseexchdates")
+ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", table = "ccmxpf_lnkhist")
+```
+
+```{r}
+#| include: false
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  rename(permno = lpermno) |>
+  select(gvkey, permno, linkdt, linkenddt)
+
+gvkeys <-
+  ccm_link |>
+  mutate(test_date = as.Date("2004-06-28")) |>
+  filter(test_date >= linkdt, 
+         test_date <= linkenddt | is.na(linkenddt)) |>
+  select(gvkey, permno) |>
+  collect()
+```
+
+```{r}
+#| include: false
+crsp_sample <-
+  stocknames |>
+  mutate(test_date = as.Date("2004-06-25")) |>
+  filter(test_date >= namedt, test_date <= nameenddt) |>
+  select(permno, permco, ticker, shrcls) |>
+  distinct() |>
+  collect()
+```
+
+```{r}
+#| include: false
+#| cache: true
+sho_data <- 
+  fhk_pilot |>
+  select(gvkey, pilot) |>
+  distinct() |>
+  group_by(gvkey) |>
+  filter(n() == 1) |>
+  ungroup() |>
+  inner_join(fhk_pilot, by = c("gvkey", "pilot")) 
+```
+
+### Exercises
+
+1. Before running the following code, can you tell from output above how many rows this query will return?
+What is this code doing?
+At what stage would code like this have been used in process of creating the sample above?
+Why is code like this not included above?
+
+<ul>
+```{r}
+sho_r3000 |>
+  anti_join(crsp_sample, join_by(russell_ticker == ticker)) |>
+  collect()
+```
+</ul>
+
+2. Focusing on the values of `ticker` and `pilot` in `fhk_pilot`, what differences do you observe between `fhk_pilot` and `sho_r3000_sample`?
+What do you believe is the underlying cause for these discrepancies?
+
+3. What do the following observations represent?
+Choose a few observations from this output and examine whether these reveal issues in the `sho_r3000_sample` or in `fhk_pilot`.
+
+<ul>
+```{r}
+sho_r3000_sample |>
+  inner_join(fhk_pilot, by = "ticker", suffix = c("_ours", "_fhk")) |>
+  filter(permno_ours != permno_fhk)
+```
+</ul>
+
+4. In constructing the `pilot` indicator, FHK omit cases (`gvkey` values) where there is more than one distinct value for the indicator.
+A question is: Who are these firms? 
+Why is there more than one value for `pilot` for these firms?
+And does omission of these make sense?
+(*Hint*: It may help to compare `fhk_pilot` with `sho_r3000_gvkeys` for these firms.)
+
+<ul>
+```{r}
+sho_dupes <-
+  fhk_pilot |>
+  group_by(gvkey) |>
+  filter(n_distinct(pilot) > 1) |>
+  ungroup() 
+
+sho_dupes |>
+  select(gvkey, pilot) |>
+  arrange(gvkey)
+```
+</ul>
+
+5. What issue is implicit in the output from the code below?
+How could you fix this issue?
+Would you expect a fix for this issue to significantly affect the regression results?
+Why or why not?
+
+<ul>
+```{r}
+#| dependson: sho_data
+sho_data |> 
+  count(gvkey, ticker) |> 
+  arrange(desc(n))
+```
+</ul>
+
+### Early studies of Reg SHO {#sec-sho-early}
+
+### Discussion questions and exercises
+
+1. Earlier we identified one feature of a randomized controlled trial (RCT) as that "proposed analyses are specified in advance", as in a registered reports process.
+Why do you think the SEC did not use a registered report for its 2007 paper?
+Do you think the analyses of the SEC would be more credible if conducted as part of a registered reports process?
+Why or why not?
+
+2. Do you have concerns that the results @Alexander:2008th have been p-hacked?
+What factors increase or reduce your concerns in this regard?
+
+3. Evaluate the hypotheses found in the section of @Diether:2009vu [pp. 41-45] entitled *Testable Hypotheses* with particular sensitivity to concerns about HARKing.
+What kind of expertise is necessary in evaluating hypotheses in this way?
+
+4. How might the SEC have conducted Reg SHO as part of a registered reports process open to outside research teams, such as @Alexander:2008th and @Diether:2009vu?
+How might such a process have been run?
+What challenges would such a process face?
+
+## Indirect effects of Reg SHO {#sec-sho-indirect}
+
+### FHK: Data steps
+
+```{r}
+#| label: pg_data
+#| cache: true
+#| include: false
+pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+
+compustat_annual <-
+  funda |>
+  filter(indfmt == 'INDL', datafmt == 'STD', popsrc == 'D', consol == 'C', 
+         between(fyear, 1999, 2012),
+         !(between(sich, 6000, 6999) | between(sich, 4900, 4949))) |>
+  select(gvkey, fyear, datadate, fyr, sich, dltt, dlc, seq, oibdp,
+         ib, ibc, oancf, xidoc, at, ppegt, sale, rect, ceq, csho, prcc_f) |>
+  mutate(fyear = as.integer(fyear)) |>
+  collect()
+
+rs <- dbDisconnect(pg)
+
+controls_raw <-
+  compustat_annual |>
+  group_by(gvkey) |>
+  arrange(fyear) |>
+  mutate(lag_fyear = lag(fyear),
+         mtob = if_else(lag(ceq) != 0, 
+                        lag(csho) * lag(prcc_f)/lag(ceq), NA_real_),
+         leverage = if_else(dltt + dlc + seq != 0, 
+                            (dltt + dlc) / (dltt + dlc + seq), NA_real_),
+         roa = if_else(lag(at) > 0, oibdp/lag(at), NA_real_)) |>
+  filter(fyear == lag(fyear) + 1) |>
+  ungroup() |>
+  select(gvkey, datadate, fyear, at, mtob, leverage, roa)
+  
+controls_filled <-
+  controls_raw |>
+  group_by(gvkey) |>
+  arrange(fyear) |>
+  fill(at, mtob, leverage, roa) |>
+  ungroup()
+
+controls_fyear_avg <-
+  controls_filled |>
+  group_by(fyear) |>
+  summarize_at(vars(at, mtob, leverage, roa), 
+               \(x) mean(x, na.rm = TRUE))
+
+df_controls <-
+  controls_filled |>
+  inner_join(controls_fyear_avg, by = "fyear", suffix = c("", "_avg")) |>
+  mutate(at = coalesce(at, at_avg),
+         mtob = coalesce(mtob, mtob_avg),
+         leverage = coalesce(leverage, leverage_avg),
+         roa = coalesce(roa, roa_avg)) |>
+  select(gvkey, fyear, at, mtob, leverage, roa)
+
+ff_data <- get_ff_ind(48)
+
+get_das <- function(compustat, drop_extreme = TRUE) {
+  
+  for_disc_accruals <-
+    compustat |>
+    inner_join(ff_data, 
+               join_by(between(sich, sic_min, sic_max))) |>
+    group_by(gvkey, fyr) |>
+    arrange(fyear) |>
+    filter(lag(at) > 0) |>
+    mutate(lag_fyear = lag(fyear),
+           acc_at = (ibc - (oancf - xidoc)) / lag(at),
+           one_at = 1 / lag(at),
+           ppe_at = ppegt / lag(at),
+           sale_c_at = (sale - lag(sale)) / lag(at),
+           salerect_c_at = ((sale - lag(sale)) - 
+                              (rect - lag(rect))) / lag(at)) |>
+    ungroup() |>
+    mutate(keep = case_when(drop_extreme ~ abs(acc_at) <= 1,
+                            TRUE ~ TRUE)) |>
+    filter(lag_fyear == fyear - 1,
+           keep, 
+           !is.na(salerect_c_at), !is.na(acc_at), !is.na(ppe_at)) |>
+    group_by(ff_ind, fyear) |>
+    mutate(num_obs = n(), .groups = "drop") |>
+    filter(num_obs >= 10) |>
+    ungroup()
+  
+  fm_da <-
+    for_disc_accruals |>
+    group_by(ff_ind, fyear) |>
+    do(model = tidy(lm(acc_at ~ one_at + sale_c_at + ppe_at, data = .))) |>
+    unnest(model) |>
+    select(ff_ind, fyear, term, estimate) |>
+    pivot_wider(names_from = "term", values_from = "estimate", 
+                names_prefix = "b_")
+  
+  for_disc_accruals |>
+    left_join(fm_da, by = c("ff_ind", "fyear")) |>
+    mutate(nda = `b_(Intercept)` + one_at * b_one_at + ppe_at * b_ppe_at + 
+                   salerect_c_at * b_sale_c_at,
+           da = acc_at - nda) |>
+    select(gvkey, fyear, ff_ind, acc_at, da) 
+}
+
+get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
+  
+  das <- get_das(compustat, drop_extreme = drop_extreme)
+  
+  perf <-
+    compustat |>
+    group_by(gvkey) |>
+    arrange(fyear) |>
+    mutate(ib_at = 
+      case_when(pm_lag ~ if_else(lag(at) > 0, lag(ib)/lag(at), NA_real_),
+                TRUE ~ if_else(at > 0, ib/at, NA_real_))) |>
+    ungroup() |>
+    inner_join(das, by = c("gvkey", "fyear")) |>
+    select(gvkey, fyear, ff_ind, ib_at)
+  
+  perf_match <-
+    perf |>
+    inner_join(perf, by = c("fyear", "ff_ind"),
+               suffix = c("", "_other"),
+               relationship = "many-to-many") |>
+    filter(gvkey != gvkey_other) |>
+    mutate(perf_diff = abs(ib_at - ib_at_other)) |>
+    group_by(gvkey, fyear) |>
+    filter(perf_diff == min(perf_diff)) |>
+    select(gvkey, fyear, gvkey_other)
+  
+  perf_matched_accruals <- 
+    das |>
+    rename(gvkey_other = gvkey,
+           da_other = da) |>
+    select(fyear, gvkey_other, da_other) |>
+    inner_join(perf_match, by = c("fyear", "gvkey_other")) |>
+    select(gvkey, fyear, gvkey_other, da_other)
+  
+  das |>
+    inner_join(perf_matched_accruals, by = c("gvkey", "fyear")) |>
+    mutate(da_adj = da - da_other) |>
+    select(gvkey, fyear, acc_at, da, da_adj, da_other, gvkey_other)
+}
+
+get_pmdas <- function(compustat, pm_lag = TRUE, drop_extreme = TRUE) {
+  
+  get_pm(compustat, 
+         pm_lag = pm_lag,
+         drop_extreme = drop_extreme) |>
+    group_by(gvkey, fyear) |>
+    filter(row_number() == 1) |>
+    ungroup() 
+}
+
+pmdas <- get_pmdas(compustat_annual)
+
+sho_data <- 
+  fhk_pilot |>
+  select(gvkey, pilot) |>
+  distinct() |>
+  group_by(gvkey) |>
+  filter(n() == 1) |>
+  ungroup() |>
+  inner_join(fhk_pilot, by = c("gvkey", "pilot")) 
+
+win_vars <- c("at", "mtob", "leverage", "roa", "da_adj", "acc_at")
+
+sho_accruals <-
+  sho_data |>
+  inner_join(fhk_firm_years, 
+             by = "gvkey",
+             relationship = "many-to-many") |>
+  select(gvkey, datadate, pilot) |>
+  mutate(fyear = year(datadate) - (month(datadate) <= 5)) |>
+  left_join(df_controls, by = c("gvkey", "fyear")) |>
+  left_join(pmdas, by = c("gvkey", "fyear")) |>
+  group_by(fyear) |>
+  mutate(across(all_of(win_vars),
+                \(x) winsorize(x, prob = 0.01))) |>
+  ungroup()
+```
+
+### Discussion questions
+
+1. What are these lines doing in the code creating `ff_data`? 
+
+<ul>
+```{r, eval=FALSE}
+mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
+unnest(sich) |> 
+```
+</ul>
+
+2. What issue is `filter(row_number() == 1)` addressing in the code above?
+What assumptions are implicit in this approach?
+Do these assumptions hold in this case?
+What would be an alternative approach to address the issue?
+
+3. Why is `filter(fyear == lag(fyear) + 1)` required in the creation of `controls_raw`?
+
+4. Does the argument for using `salerect_c_at * b_sale_c_at` in creating non-discretionary accruals make sense to you?
+How do @Kothari:2005aa explain this?
+
+5. Does the code above ensure that a performance-matched control firm is used as a control just once?
+If so, which aspect of the code ensures this is true? 
+If not, how might you ensure this and does this cause problems? (Just describe the approach in general; no need to do this.)
+
+### FHK: Regression analysis
+
+```{r}
+#| label: reg_functions
+#| cache: true
+#| include: false
+ctrls_list <- c("log(at)", "mtob", "roa", "leverage")
+
+reg_year_fe <- function(df, dv = "da_adj",
+                        controls = TRUE, firm_fe = FALSE, cl_2 = TRUE,
+                        vcov = NULL) {
+  df <- 
+    df |>
+    mutate(year = year(datadate),
+           during = year %in% c(2005, 2006, 2007),
+           post = year %in% c(2008, 2009, 2010))
+  
+  model <- str_c(dv, " ~ pilot * (during + post) ",
+                 if_else(controls, 
+                         str_c(" + ", str_c(ctrls_list, 
+                                            collapse = " + ")), ""),
+                    if_else(firm_fe, "| gvkey + year ", "| year "))
+  if (is.null(vcov)) {
+    vcov = as.formula(if_else(!cl_2, "~ gvkey ", "~ year + gvkey"))
+  }
+  
+  feols(as.formula(model), 
+        vcov = vcov,
+        notes = FALSE,
+        data = df)
+}
+```
+
+```{r}
+#| include: false
+make_reg_table <- function(df, dv = "da_adj", cl_2 = TRUE) {
+  omit <- str_c("^(", str_c(str_replace_all(c("during", "post", ctrls_list),
+                                            "[()]", "."), 
+                            collapse="|"), ")")
+  
+  run_reg <- function(controls, firm_fe) {
+    reg_year_fe(df, dv = dv, controls = controls, firm_fe = firm_fe,
+                cl_2 = cl_2)
+  }
+  
+  params <- tibble(controls = c(FALSE, TRUE, FALSE, TRUE),
+                   firm_fe = c(FALSE, FALSE, TRUE, TRUE))
+  
+  fms <- pmap(params, run_reg)
+  
+  notes <- tribble(~term,  ~`1`,  ~`2`, ~`3`, ~`4`,
+                   "Firm FEs", "No", "No", "Yes", "Yes",
+                   "Controls", "No", "Yes", "No", "Yes")
+  
+  modelsummary(fms,
+               estimate = "{estimate}{stars}",
+               gof_map = "nobs",
+               stars = c('*' = .1, '**' = 0.05, '***' = .01),
+               coef_omit = str_c(str_replace_all(ctrls_list, "[()]", "."),
+                                 collapse = "|"),
+               add_rows = notes)
+}
+```
+
+```{r}
+#| label: tbl-baseline
+#| output: asis
+#| tbl-cap: Baseline replication of FHK
+make_reg_table(sho_accruals)
+```
+
+```{r}
+#| label: plot_coefficients
+#| include: false
+plot_coefficients <- function(model, title = "") {
+  tibble(name = names(model$coefficients),
+         value = as.vector(model$coefficients)) |>
+    filter(grepl("^year.", name)) |>
+    separate(name, into = c("year", "pilot"), sep = ":", fill = "right") |>
+    mutate(year = as.integer(gsub("^year", "", year)),
+           pilot = coalesce(pilot == "pilotTRUE", FALSE)) |>
+    ggplot(aes(x = year, y = value, color = pilot)) +
+    geom_line() +
+    scale_x_continuous(breaks = 2000:2012L) +
+    geom_rect(xmin = 2005, xmax = 2007, ymin = -Inf, ymax = Inf,
+                color = NA, alpha=0.01) 
+}
+```
+
+```{r}
+#| label: fig-coef-plot
+#| fig-height: 7
+#| fig-cap: Baseline by-year replication of FHK
+#| fig-width: 10
+#| warning: false
+#| message: false
+#| echo: false
+sho_accruals |>
+  mutate(year = as.factor(year(datadate))) |>
+  feols(da_adj ~ year * pilot - pilot - 1  + 
+             log(at) + mtob + roa + leverage, vcov = ~ year + gvkey, data = _) |>
+  plot_coefficients()
+```
+
+### Exercises
+
+1. In words, how does `sho_accruals_alt` (defined below) differ from `sho_accruals`?
+Does using `sho_accruals_alt` in place of `sho_accruals` affect the regression results?
+
+```{r}
+firm_years <-
+  controls_raw |>
+  select(gvkey, datadate, fyear)
+
+sho_accruals_alt <-
+  sho_r3000_gvkeys |>
+  inner_join(firm_years, by = "gvkey") |>
+  left_join(df_controls, by = c("gvkey", "fyear")) |>
+  left_join(pmdas, by = c("gvkey", "fyear")) |>
+  group_by(fyear) |>
+  mutate(across(all_of(win_vars), \(x) winsorize(x, prob = 0.01))) |>
+  ungroup()
+```
+
+2. In an online appendix BDLYY say "FHK winsorize covariates for their covariate balance table at 1/99%. We inferred that they also winsorized accruals at this level. Whether they winsorize across sample years or within each year, they do not specify."
+The code above winsorized within each year.
+How would you modify the code to winsorize "across sample years"?
+Does doing so make a difference?
+
+3. How would you modify the code to winsorize at the 2%/98% level? Does this make a difference to the results?
+(*Hint*: With the `farr` package loaded, type `? winsorize` in the R console to get help on this function.)
+
+4. How would you modify the code to not winsorize at all? 
+Does this make a difference to the results?
+
+5. Some of the studies discussed by BDLYY exclude 2004 data from the sample.
+How would you modify the above code to do this here?
+Does excluding 2004 here make a significant difference?
+
+6. What are FHK doing in the creation of `controls_filled`? (Hint: The key "verb" is `fill`.) 
+Does this seem appropriate?
+Does doing this make a difference?
+
+7. What are FHK doing in the creation of `df_controls` from `controls_fyear`?
+Does this seem appropriate?
+Does doing this make a difference?
+
+8. What is the range of values for `year` in `sho_accruals`?
+Does this suggest any issues with the code `post = year %in% c(2008, 2009, 2010)` above?
+If so, does fixing any issue have an impact on the results reported above?
+
+
+9. Would it make sense, in creating `perf` above, if we instead calculated `ib_at` as `if_else(at > 0, ib/at, NA_real_))`?
+What is the effect on the regression results if we use this modified calculation of `ib_at`?
+What do @Kothari:2005aa recommend on this point?
+(*Hint*: Use `pm_lag = FALSE` where applicable.)
+
+10. @Fang:2019tt [p. 10] follow @Fang:2016uy, who "exclude observations for which the absolute value of total accruals-to-total assets) exceeds one. 
+This is a standard practice in the accounting literature because firms with such high total accruals-to-total assets are often viewed as extreme outliers.
+Nonetheless, the FHK results are robust to winsorizing the accrual measures at the 1% and 99% levels instead of excluding extreme outliers."
+Does this claim hold up in the reproduction above?
+What happens if the `filter` on `abs(acc_at) <= 1` is removed from the code above?
+(*Hint*: Use `drop_extreme = FALSE` where applicable.)
+
+11. Explain what each line of the function `plot_coefficients` before the line starting with `ggplot` is doing.
+(*Hint*: It may be helpful to store the model that is fed to the function above in the variable `model` and then run the function line by line.)
+
+## Statistical inference {#sec-fhk-inference}
+
+```{r}
+#| label: get_coef_rand
+#| cache: true
+#| dependson: sho_accruals, reg_functions
+#| include: false
+get_coef_rand <- function(i) {
+  treatment <-
+    sho_accruals |>
+    select(gvkey, pilot) |>
+    distinct() |>
+    mutate(pilot = sample(pilot, size = length(pilot), replace = FALSE))
+  
+  reg_data_alt <-
+    sho_accruals |>
+    select(-pilot) |>
+    inner_join(treatment, by = "gvkey")
+  
+  reg_data_alt |> 
+      reg_year_fe(controls = TRUE, firm_fe = TRUE) |> 
+      tidy() |> 
+      select(term, estimate) |>
+      pivot_wider(names_from = "term", values_from = "estimate") |>
+      mutate(iteration = i) |>
+      suppressWarnings()
+}
+```
+
+```{r}
+#| eval: false 
+#| include: false
+set.seed(2021)
+rand_results <- bind_rows(lapply(1:1000, get_coef_rand))
+```
+
+```{r}
+#| label: rand_results
+#| cache: true
+#| echo: false
+#| warning: false
+#| dependson: sho_accruals, get_coef_rand
+#| include: false
+library(parallel)
+set.seed(2021)
+rand_results <- bind_rows(mclapply(1:1000, get_coef_rand, mc.cores = 8))
+```
+
+```{r}
+#| cache: true
+#| warning: false
+#| dependson: sho_accruals, reg_functions, rand_results
+#| include: false
+fms <- list()
+fms[[1]] <- reg_year_fe(sho_accruals, cl_2 = TRUE)
+fms[[2]] <- reg_year_fe(sho_accruals, cl_2 = FALSE)
+fms[[3]] <- fms[[2]]
+
+vcovs <- list()
+vcovs[[1]] <- vcov(fms[[1]])
+vcovs[[2]] <- vcov(fms[[2]])
+vcov <- vcovs[[2]]
+vcov["pilotTRUE:duringTRUE", "pilotTRUE:duringTRUE"] <-
+  var(rand_results[["pilotTRUE:duringTRUE"]])
+vcov["pilotTRUE:postTRUE", "pilotTRUE:postTRUE"] <- 
+  var(rand_results[["pilotTRUE:postTRUE"]])
+vcovs[[3]] <- vcov
+```
+
+```{r}
+#| label: tbl-rand-inf
+#| warning: false
+#| echo: false
+#| output: asis
+#| tbl-cap: Results with randomization inference
+modelsummary(fms, vcov = vcovs, 
+             estimate = "{estimate}{stars}",
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01),
+             coef_omit = "^(during|post|pilot)TRUE$")
+```
+
+### Exercises
+
+1. In the function `get_coef_rand()`, we first created the data set `treatment`, then merged this with `reg_data_alt`.
+Why did we do it this way rather than simply applying the line `mutate(pilot = sample(pilot, size = length(pilot), replace = FALSE))` directly to `reg_data_alt`?
+
+2. Using randomization inference, calculate a $p$-value for a one-sided alternative hypothesis that $H_1: \beta < 0$ where $\beta$ is the coefficient on $\mathit{PILOT} \times \mathit{DURING}$.
+(*Hint*: You should not need to run the randomization again; modifying the calculation of `p_value` should suffice.)
+
+3. What is the empirical standard error implied by the distribution of coefficients in `rand_results`?
+Is it closer to the two-way cluster robust standard errors obtained in estimating with `cl_2 = TRUE` or with `cl_2 = FALSE`?
+Why might it be preferable to calculate $p$-values under randomisation inference using the empirical distribution of the test statistic, instead of calculating these from $t$-statistics based on the estimated coefficient and the empirical standard error?
+Would we get different $p$-values using the former approach?
+
+4. Why did we not use the empirical standard error implied by the distribution of coefficients in `rand_results` to calculate standard errors for the control variables (e.g., `log(at)`)?
+
+## Causal diagrams {#sec-fhk-diagrams}
+
+### Discussion questions
+
+1. What features of the causal diagram above imply that we do not need to control for performance, sales, and PP&E in estimating the causal effect of Reg SHO on accruals?
+What is the basis for assuming these features in the causal diagram?
+
+2. @Black:2022tz report that "over 60 papers in accounting, finance, and economics report that suspension of the price tests had wide-ranging indirect effects on pilot firms, including on earnings management, investments, leverage, acquisitions, management compensation, workplace safety, and more (see Internet Appendix, Table IA-1 for a summary)."
+In light of the Internet Appendix of @Black:2022tz, is there any evidence that Reg SHO might plausibly have an effect on performance, sales growth, or PP&E?
+If so, how would the causal diagram above need to be modified to account for these consequences?
+What would be the implications of these changes on the appropriate tests for estimating the causal effects of Reg SHO on accruals?
+
+3. Produce a regression table and a plot like the ones in the FHK replication above, but using discretionary accruals *without* performance matching instead of performance-matched discretionary accruals.
+How do you interpret these results?
+
+4. Produce a regression table and a plot like the ones in the FHK replication above, but using total accruals instead of discretionary accruals and excluding controls (so the coefficients will be simple conditional sample means).
+How do you interpret these results?
+
+5. Suppose you had been brought in by the SEC to design a study examining the research question examined by FHK in the form of a registered report.
+What analyses would you conduct to try to understand the best research design?
+For example, how would you choose between *DiD*, *POST*, *ANCOVA* and other empirical approaches?
+What controls would you include?
+How would you decide how to include controls?
+(For example, one could control for performance by including performance as a regressor in the model of earnings management, by matching on performance, or by including performance in the main regression specification.)
+How would you calculate standard errors?
+Discuss how your proposed empirical test differs from that of FHK.
+Would you have reported similar results to what FHK reported?
+
+6. Suppose that FHK's empirical analysis had produced a positive effect of Reg SHO on earnings management?
+Would this imply a lack of support for their hypotheses?
+Do you believe that publication in the *Journal of Finance* depended on finding a negative effect?
+
+7. What implications would there have been for publication of FHK in the *Journal of Finance* if they had failed to find an effect of Reg SHO on earnings management?
+
+## Causal mechanisms
+
+### Discussion questions
+
+1. Do you agree with the assertion of @Black:2022tz that "FHK rely on the manager fear channel"?
+What causal mechanisms are suggested in @Fang:2016uy?
+What evidence do @Fang:2016uy offer in support of these mechanisms?
+
+2. Evaluate the response of @Fang:2019tt to @Black:2022tz as it relates to causal mechanisms?
+
+3. Do you think evidence of causal mechanisms is more or less important when using a natural experiment (i.e., an experiment outside the control of the researcher that is typically analysed after it has been run) than when conducting a randomized experiment?
+Explain your reasoning given the various issues raised in this chapter.
+
+## Two-step regressions
+
+### Discussion questions
+
+1. What challenges would exist in implementing the single-regression recommendation of @Chen:2018wh for a researcher using @Kothari:2005aa performance-matched discretionary accruals?
+
+2. Do you believe the issues raised by @Chen:2018wh with regard to two-step procedures also apply if using randomization inference?
+Why or why not?
+
+## References {-}

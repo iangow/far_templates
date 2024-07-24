@@ -48,11 +48,11 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
 | Natural experiments | [natural.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd) | Use PostgreSQL template |
-| Causal mechanisms | [mechanisms.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd) | Template to come |
-| Natural experiments revisited | [natural-revisited.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd) | Template to come |
-| Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd) | Template to come |
-| Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) | Template to come |
-| Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | Template to come |
+| Causal mechanisms | [mechanisms.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd) | Use PostgreSQL template |
+| Natural experiments revisited | [natural-revisited.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd) |  [natural-revisited-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited-pq.qmd) |
+| Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)  | Use PostgreSQL template |
+| Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) |[panel-data-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data-pq.qmd) |
+| Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | Use PostgreSQL template |
  
 ### Part IV: Additional topics
 
