@@ -47,7 +47,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
-| Natural experiments | [natural.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd) | Template to come |
+| Natural experiments | [natural.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural.qmd) | Use PostgreSQL template |
 | Causal mechanisms | [mechanisms.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/mechanisms.qmd) | Template to come |
 | Natural experiments revisited | [natural-revisited.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd) | Template to come |
 | Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd) | Template to come |
