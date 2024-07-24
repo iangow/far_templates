@@ -66,10 +66,10 @@ In which periods would  $\mathit{PART}$ be set to one in @Jones:1991vx?
 #| eval: true 
 #| include: false 
 #| cache: true
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+db <- dbConnect(duckdb::duckdb())
 
-funda <- tbl(db, Id(schema = "comp", table = "funda"))
-company <- tbl(db, Id(schema = "comp", table = "company"))
+funda <- load_parquet(db, schema = "comp", table = "funda")
+company <- load_parquet(db, schema = "comp", table = "company")
 
 sics <- 
   company |>

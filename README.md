@@ -41,7 +41,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Event studies | [event-studies.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/event-studies-pq.qmd) | [event-studies-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/event-studies-pq.qmd) |
 | Post-earnings announcement drift | [pead.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/pead.qmd) | [pead-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/pead-pq.qmd)  |
 | Accruals | [accruals.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/accruals.qmd) | [accruals-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/accruals-pq.qmd)  |
-| Earnings management | [earnings-mgt.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt.qmd) | Template to come |
+| Earnings management | [earnings-mgt.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt.qmd) | [earnings-mgt-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/earnings-mgt-pq.qmd) |
 
 ### Part III: Causal inference
 
