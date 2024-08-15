@@ -442,7 +442,7 @@ What differences appear to be significant?
 Do these differences make sense? 
 Or do they suggest anomalies in the underlying data?
 
-4. Compare the values in the standard deviation column of the "earnings management" rows of Table 1 of @Dechow:1995wr with the values in the mean column of the $t$-statistic rows.
+4. Compare the values in the standard deviation column of the "earnings management" rows of Table 1 of @Dechow:1995wr with the values in the mean column of the standard error rows.
 What is the relationship between these values?
 What would you expect the relationship between these values to be?
 Do you observe similar relations in @tbl-table-1 above?
