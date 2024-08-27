@@ -225,8 +225,6 @@ What challenges would such a process face?
 
 ## Indirect effects of Reg SHO {#sec-sho-indirect}
 
-### FHK: Data steps
-
 ```{r}
 #| label: pg_data
 #| cache: true
@@ -409,12 +407,16 @@ sho_accruals <-
 
 ### Discussion questions
 
-1. What are these lines doing in the code creating `ff_data`? 
-
+1. What would be the effect replacing the code above that creates `ff_data` with the following code?
+What changes would we need to make to the code creating `for_disc_accruals` in `get_das()` to use this modified version of `ff_data`?
 <ul>
-```{r, eval=FALSE}
-mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
-unnest(sich) |> 
+```{r}
+#| eval: false
+ff_data <- 
+  get_ff_ind(48) |>
+  rowwise() |>
+  mutate(sich = list(seq(from = sic_min, to = sic_max))) |> 
+  unnest(sich)
 ```
 </ul>
 
@@ -432,7 +434,13 @@ How do @Kothari:2005aa explain this?
 If so, which aspect of the code ensures this is true? 
 If not, how might you ensure this and does this cause problems? (Just describe the approach in general; no need to do this.)
 
-### FHK: Regression analysis
+6. What are FHK doing in the creation of `controls_filled`? (Hint: The key "verb" is `fill`.) 
+Does this seem appropriate?
+Does doing this make a difference?
+
+7. What are FHK doing in the creation of `df_controls` from `controls_fyear`?
+Does this seem appropriate?
+Does doing this make a difference?
 
 ```{r}
 #| label: reg_functions
@@ -571,18 +579,9 @@ Does this make a difference to the results?
 How would you modify the above code to do this here?
 Does excluding 2004 here make a significant difference?
 
-6. What are FHK doing in the creation of `controls_filled`? (Hint: The key "verb" is `fill`.) 
-Does this seem appropriate?
-Does doing this make a difference?
-
-7. What are FHK doing in the creation of `df_controls` from `controls_fyear`?
-Does this seem appropriate?
-Does doing this make a difference?
-
 8. What is the range of values for `year` in `sho_accruals`?
 Does this suggest any issues with the code `post = year %in% c(2008, 2009, 2010)` above?
 If so, does fixing any issue have an impact on the results reported above?
-
 
 9. Would it make sense, in creating `perf` above, if we instead calculated `ib_at` as `if_else(at > 0, ib/at, NA_real_))`?
 What is the effect on the regression results if we use this modified calculation of `ib_at`?
