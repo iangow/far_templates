@@ -59,7 +59,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Chapter | PostgreSQL template | Parquet template |
 |---------|---------------------|------------------|
 | Beyond OLS | [glms.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/glms.qmd) | [glms-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/glms-pq.qmd) |
-| Extreme values and sensitivity analysis | Template to come | Template to come |
+| Extreme values and sensitivity analysis | [extreme-vals.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/extreme-vals.qmd) | Use PostgreSQL template |
 | Matching | Template to come | Template to come |
 | Prediction | Template to come | Template to come |
 

@@ -1,0 +1,151 @@
+---
+title: "Exercise template for 'Extreme values and sensitivity analysis'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| message: false
+#| include: false
+library(tidyverse)
+library(farr)
+library(DBI)
+library(modelsummary)
+library(fixest)
+library(dbplyr)       # window_order()
+library(furrr)        # future_map()
+library(lmtest)       # coeftest()
+library(sandwich)     # vcovHC()
+library(robustbase)   # lmrob()
+```
+
+```{r}
+#| include: false
+options(width = 75)
+options(tibble.width = 75)
+```
+
+## @Leone:2019uc {#sec-leone}
+
+### Discussion questions
+
+1.  Table 5 of @Leone:2019uc presents results from a simulation analysis.
+    Which panel of that table likely best reflects the kind of data researchers encounter in practice?
+
+2.  Consider the left half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0$).
+    Using the panel you identified in question 1 above, interpret the implications of the simulation results for researchers in practice.
+    Note that the mean estimates of $\beta_1$ using Cook's D or robust regression are very similar.
+    Does Table 5 of @Leone:2019uc provide strong support for rejecting Cook's D in favour of robust regression?
+    
+3.  In the search for new research questions, accounting researchers increasingly need to study variables whose most plausible effect sizes are consistent with the right half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0$).
+    Using the panel you identified in question 1 above, interpret the implication of the simulation results for researchers in practice.
+
+4.  Table 2 of @Leone:2019uc reports results similar to those given in columns (4), (5), and (6) of Table 24.1.
+    They say, "\[when we\] perform estimation using RR, the coefficient on $BIG\_N$ is $-0.011$ (significant at the 1 percent level), opposite of what @Chen:2018wh find, and instead consistent with the negative coefficient documented in prior studies using the two-step procedure." In light of the simulation evidence, how persuasive do you find the evidence above in support of a negative coefficient on `big_n`?
+    How probative is the evidence of prior studies if it is based on approaches (e.g., winsorization and two-step procedures) that @Leone:2019uc and @Chen:2018wh demonstrate lead to unreliable results?
+
+## @Call:2018aa
+
+```{r}
+#| label: tbl-kuvvet-2
+#| echo: false
+#| tbl-cap: "Top 1% observations as percentage of total penalties"
+cmsw_2018 |> 
+  filter(tousesox == 1) |>
+  pivot_longer(cols = matches("(penalty|mos)"), 
+               values_to = "amount", names_to = "target") |>
+  group_by(target) |> 
+  arrange(desc(amount)) |>
+  mutate(rank = row_number()) |>
+  summarize(total = sum(amount),
+            total_top = sum(if_else(rank <= 6, amount, 0)),
+            .groups = "drop") |>
+  mutate(top_perc = round(total_top / total * 100, 1),
+         across(total:total_top, \(x) round(x, 0))) |>
+  knitr::kable(digits = 3, format.args = list(big.mark = ','),
+                format = "latex", booktabs = TRUE, position = "!t")
+```
+
+```{r}
+#| include: false
+yvars <- set_names(c("firmpenalty", "emppenalty", "empprisonmos"))
+
+cmsw <-
+  cmsw_2018 |>
+  mutate(across(c(blckownpct, initabret, pctinddir, mkt2bk, lev), 
+                winsorize),
+         across(any_of(yvars), \(x) log(1 + x), .names = "ln_{.col}"),
+         ff12 = as.factor(ff12),
+         across(where(is.logical), as.integer)) |>
+  filter(tousesox == 1)
+```
+
+```{r}
+#| include: false
+#| warning: false
+x <- "wbflag"
+controls <- c("selfdealflag", "blckownpct", "initabret", "lnvioperiod", 
+              "bribeflag", "mobflag", "deter", "lnempcleveln", 
+              "lnuscodecnt", "viofraudflag", "misledflag", "audit8flag", 
+              "exectermflag", "coopflag", "impedeflag", "pctinddir", 
+              "recidivist", "lnmktcap", "mkt2bk", "lev", "lndistance", 
+              "ff12")
+
+get_poisson_fit <- function(y, df = cmsw) {
+  form <- as.formula(str_c(y, " ~ ", 
+                           str_c(c(x, controls), collapse = " + ")))
+  fm <- glm(form, family = "poisson", data = df,
+            control = glm.control(maxit = 100))
+}
+```
+
+```{r}
+#| include: false
+#| warning: false
+fms <- map(yvars, get_poisson_fit)
+```
+
+```{r}
+#| include: false
+get_coefs <- function(fm, type = "HC1") {
+  coeftest(fm, vcov = vcovHC(fm, type = type))
+}
+```
+
+```{r}
+#| label: tbl-cmsw-4
+#| warning: false
+#| echo: false
+#| tbl-cap: "Enforcement outcomes (Table 4 of CMSW)"
+modelsummary(map(fms, get_coefs),
+             estimate = "{estimate}{stars}",
+             statistic = "{statistic}",
+             coef_map = "wbflag",
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+
+### Discussion questions
+
+1.  Suppose you were a regulator interested in understanding the effects of whistleblowers on enforcement outcomes.
+    How might you design an experiment to examine these effects?
+    What challenges would you expect to face in implementing your experiment?
+    How would the experiment be different from the setting of @Call:2018aa?
+
+2.  As an additional example of "misunderstanding" by @Kuvvet:2019aa, @call2019response claim that "Kuvvet argues that CMSW's findings speak to correlation rather than causation. The published version of CMSW makes this point clearly throughout the paper." What claim in @Kuvvet:2019aa are @call2019response addressing here?
+    Do you agree that "CMSW makes this point clearly throughout the paper"?
+
+3.  "The published version of CMSW empirically addresses the role of extreme observations in enforcement actions with an estimator designed specifically to handle skewed data (Poisson pseudo-maximum likelihood) and with additional robustness tests, including one focused on the incidence rather than the magnitude of penalties."
+    As we see in @tbl-cmsw-4, the estimator used in @Call:2018aa is standard Poisson regression, which is called in R using the `glm()` function with `family = "poisson"`.
+    How might we use data sets covered in Section 24.1 or Section 24.4 to evaluate the claim that Poisson regression estimator is "designed specifically to handle skewed data"?
+
+4.  Could we use approaches covered in Section 24.1 or Section 24.4 to address extreme observations in the setting of @Call:2018aa?
+
+5.  @call2019response argue that "unlike many other settings in accounting, finance, and economics where the focus is often on the average firm, the enforcement action setting is inherently extreme" and claim that this is another example of "misunderstanding" in @Kuvvet:2019aa. Do you agree that "the enforcement action setting is inherently extreme"? Does this inherent extremeness undermine the arguments of @Kuvvet:2019aa?
+
+6.  What claim by @Kuvvet:2019aa are @call2019response trying to refute regarding the "tipster" variable?
+    Do you find this response convincing?
+    
+## References {.unnumbered}
