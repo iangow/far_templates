@@ -1,0 +1,342 @@
+---
+title: "Exercise template for 'Prediction'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| message: false
+#| include: false
+library(tidyverse)
+library(DBI)
+library(farr)
+library(furrr)
+library(rpart)
+library(rpart.plot)
+library(glmnet)
+```
+
+```{r}
+#| label: features
+#| include: false
+#| cache: true
+db <- dbConnect(duckdb::duckdb())
+
+funda <- load_parquet(db, schema = "comp", table = "funda")
+
+X_vars <- c("act", "ap", "at", "ceq", "che", "cogs", "csho", "dlc", 
+            "dltis", "dltt", "dp", "ib", "invt", "ivao", "ivst", 
+            "lct", "lt", "ni", "ppegt", "pstk", "re", "rect", "sale", 
+            "sstk", "txp", "txt", "xint", "prcc_f")
+
+y_var <- "misstate"
+
+features_all <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  filter(fyear >= 1991, fyear <= 2008) |>
+  mutate(across(c(ivao, pstk, ivst, txp), 
+                \(x) coalesce(x, 0))) |>
+  select(gvkey, datadate, fyear, all_of(X_vars))
+
+features <-
+  features_all |>
+  collect() |> 
+  na.omit()
+
+aaer_long <-
+  aaer_firm_year |>
+  rowwise() |>
+  mutate(fyear = list(seq(min_year, max_year, by = 1))) |>
+  unnest(fyear) |>
+  select(gvkey, p_aaer, fyear, min_year, max_year) 
+
+get_aaers <- function(test_date, include_latent = FALSE) {
+  min_aaer_date <- min(aaer_dates$aaer_date, na.rm = TRUE)
+  
+  df <-
+    aaer_dates |>
+    mutate(p_aaer = str_replace(aaer_num, "^AAER-", "")) |>
+    select(p_aaer, aaer_date) |>
+    distinct() |>
+    right_join(aaer_long, by = "p_aaer") |>
+    mutate(aaer_date = coalesce(aaer_date, min_aaer_date)) |>
+    mutate(misstate = aaer_date <= test_date) |>
+    select(gvkey, fyear, misstate) |>
+    distinct()
+    
+  if (include_latent) {
+    df |> mutate(misstate_latent = TRUE)
+  } else {
+    df
+  }
+}
+
+aaers <- get_aaers(test_date = "2002-09-30", include_latent = TRUE)
+
+df <-
+  aaers |>
+  select(-misstate_latent) |>
+  right_join(features, by = c("gvkey", "fyear")) |>
+  mutate(misstate = coalesce(misstate, FALSE)) 
+
+data_train <- 
+  df |>
+  filter(fyear <= 2001)
+
+n_folds <- 5
+folds <- 1:n_folds
+
+sample_splits <- 
+  data_train |>
+  select(gvkey) |>
+  distinct() |>
+  mutate(fold = sample(folds, nrow(pick(everything())), replace = TRUE))
+
+formula <- str_c(y_var, " ~ ", str_c(X_vars, collapse = " + "))
+fm1 <- glm(formula, data = data_train, family = binomial)
+
+within_sample <-
+  data_train |>
+  mutate(score = predict(fm1, 
+                         newdata = pick(everything()), type = "response"),
+         predicted = as.integer(score > 0.5))
+
+logit_predict <- function(fold) {
+  dft <-
+    data_train |>
+    inner_join(sample_splits, by = "gvkey")
+  
+  fm1 <-
+    dft |>
+    filter(fold != !!fold) |>
+    glm(formula, data = _, family = binomial)
+  
+  dft |>
+    filter(fold == !!fold) |>
+    mutate(score = predict(fm1, pick(everything()), type = "response"),
+           predicted = as.integer(score > 0.5)) |>
+    select(gvkey, fyear, score, predicted)
+}
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| cache: false
+#| dependson: logit_predict, sample_splits
+logit_fit <- 
+  folds |> 
+  map(logit_predict) |>
+  list_rbind() |>
+  inner_join(data_train, by = c("gvkey", "fyear")) |> 
+  select(gvkey, fyear, predicted, score, misstate)
+```
+
+### Classification trees
+
+```{r}
+#| include: false
+fm2 <- rpart(formula, data = data_train, 
+             control = rpart.control(cp = 0.001, minbucket = 5), 
+             method = "class")
+```
+
+```{r}
+#| echo: false
+#| label: fig-tree
+#| fig-height: 3
+#| fig-cap: Fitted tree produced by recursive partitioning.
+#| fig-alt: "Fitted tree shows splits by features. Specific splits are not of particular importance and are not discussed in the text. First split is based on `prcc_f`, or end-of-period stock price. Splits up to five levels deep are used." 
+rpart.plot(fm2, extra = 1)
+```
+
+### Exercises
+
+1. One claimed benefit of classification trees is their ease of interpretation.
+Can you provide an intuitive explanation for the fitted tree in @fig-tree?
+If so, outline your explanation.
+If not, what challenges prevent you from doing so?
+
+2. Use `r n_folds`-fold cross validation to assess the performance of the classification tree approach using the parameters above.
+
+3. What do the parameters `cp` and `minbucket` represent?
+
+4. How does the classification tree change if you increase the parameter `cp`?
+
+5. Use `r n_folds`-fold cross validation to assess the performance of the classification tree approach with three different parameters for `minbucket` (the one used above and two others).
+
+## Penalized models {#sec-predict-penalized}
+
+```{r}
+#| include: false
+#| label: fm-lasso
+#| cache: true
+dft <-
+  data_train |>
+  inner_join(sample_splits, by = "gvkey")
+
+fm_lasso_cv <-
+  cv.glmnet(x = as.matrix(dft[X_vars]),
+            y = dft[[y_var]],
+            family = "binomial",
+            alpha = 1,
+            type.measure = "auc",
+            foldid = dft[["fold"]],
+            keep = TRUE)
+
+idmin <- match(fm_lasso_cv$lambda.min, fm_lasso_cv$lambda)
+
+fit_lasso_cv <- 
+  dft |>
+  select(misstate) |>
+  mutate(logodds = fm_lasso_cv$fit.preval[, idmin],
+         prob = exp(logodds)/(1 + exp(logodds)),
+         predicted = logodds > 0)
+
+fm_lasso <- glmnet(x = as.matrix(data_train[X_vars]), 
+                   y = data_train[[y_var]],
+                   family = "binomial",
+                   lambda = fm_lasso_cv$lambda.min,
+                   alpha = 1)
+```
+
+### Discussion questions and exercises
+
+1. What features are selected by the lasso model in this case?
+(*Hint*: You may find it useful to inspect `fm_lasso$beta[, 1]`.)
+
+2. Modify the code above to estimate a ridge regression model.
+(*Hint*: Set `alpha = 0`.)
+
+3. Describe how would you estimate an elastic net model.
+(*Hint*: The help page for `cv.glmnet()` from the `glmnet` package might be useful. One approach would be to put some of the steps above in a function that accepts `alpha` as an argument and then estimate over different values of $\alpha$.)
+
+4. Calculate AUC and produce the confusion matrix for `fm_lasso` applied to `data_train` (i.e., in sample).
+Interpret these results.
+(*Hint*: You might use this code: `predict(fm_lasso, newx = as.matrix(data_train[X_vars]))` and the `auc` function supplied with the `farr` package.)
+
+5. Calculate the AUC for the data stored in `within_sample` above (this is for the tree stored in `fm2`).
+
+```{r}
+#| include: false
+#| eval: false
+auc(within_sample$prob, within_sample$misstate)
+```
+
+```{r}
+#| label: fit_rus_model
+#| cache: false
+#| include: false
+fit_rus_model <- function(df, size = 30, rus = TRUE, learn_rate = 1,
+                          maxdepth = NULL, minbucket = NULL,
+                          ir = 1) {
+  if (!is.null(maxdepth)) control <- rpart.control(maxdepth = maxdepth) 
+  if (!is.null(minbucket)) control <- rpart.control(minbucket = minbucket)
+  
+  fm <- rusboost(formula, df, size = size, ir = ir, learn_rate = learn_rate,
+                 rus = rus, control = control)
+  return(fm)
+}
+```
+
+```{r}
+#| include: false
+#| label: rus_predict
+#| cache: false
+rus_predict <- function(fold, ...) {
+  
+  dft <-
+    data_train |>
+    inner_join(sample_splits, by = "gvkey") |>
+    mutate(misstate = as.integer(misstate))
+  
+  fm <-
+    dft |>
+    filter(fold != !!fold) |>
+    fit_rus_model(...)
+  
+  res <-
+    dft |>
+    filter(fold == !!fold) |>
+    mutate(prob = predict(fm, pick(everything()), type = "prob"),
+           predicted = predict(fm, pick(everything()), type = "class")) |>
+    select(gvkey, fyear, prob, predicted)
+  
+  res
+}
+```
+
+```{r}
+#| include: false
+#| label: get_auc
+#| warning: false
+#| cache: false
+get_auc <- function(...) {
+  set.seed(2021)
+  rus_fit <- 
+    folds |> 
+    future_map(rus_predict, 
+               .options = furrr_options(seed = 2021),
+               ...) |>
+    list_rbind() |>
+    inner_join(data_train, by = c("gvkey", "fyear")) |> 
+    select(gvkey, fyear, predicted, prob, misstate)
+  
+  auc(score = rus_fit$prob, response = as.integer(rus_fit$misstate))
+}
+```
+
+## Discussion questions and exercises
+
+1. In asserting that RUSBoost is superior to AdaBoost we did not evaluate the statistical significance of the difference between the AUCs for the two approaches.
+Describe how you might evaluate the statistical significance of this difference.
+
+2. Compare the performance statistics from cross-validation and out-of-sample testing.
+What do these numbers tell you?
+Do you believe that these provide evidence that using (say) 2001 data to train a model that is evaluated on (say) 1993 frauds is problematic?
+
+3. @Bao:2022aa report an AUC in the test sample for an all-features logit model of 0.7228 (see Panel B of Table 1).
+What differences are there between our approach here and those in @Bao:2020aa and @Bao:2022aa that might account for the differences in AUC?
+
+4. @Bao:2022aa report an AUC in the test sample for an all-features logit model of 0.6842 (see Panel B of Table 1).
+Calculate an equivalent value for AUC from applying logistic regression to data from above.
+You may find it helpful to adapt the code above for RUSBoost in the following steps:
+   a. Create a function `train_logit()` analogous to `train_model()` above, but using `glm()` in place of `rusboost()`.
+   b. Create a function `test_logit()` analogous to `test_model()` above, but using calls to `predict()` like those used above for logistic regression.
+   c. Create a function `fit_test_logit()` analogous to `fit_test()` above, but calling the functions you created above.
+   d. Use `map()` or `future_map()` with `test_years` and `fit_test_logit()` and store the results in `results_logit`.
+   e. Tabulate results using `table_results(results_logit)`.
+   
+5. Do the AUC results obtained from logit surprise you given the cross-validation and in-sample AUCs calculated (in exercises) above?
+How does the average AUC compare with the 0.6842 of @Bao:2022aa?
+What might account for the difference?
+
+6. Provide an intuitive explanation of the out-of-sample (test) NDCG\@k results for the RUSBoost model.
+(Imagine you are trying to explain these to a user of prediction models like those discussed earlier in this chapter.)
+Do you believe that these results are strong, weak, or somewhere in between?
+
+7. We followed @Bao:2020aa in using `gap = 2` (i.e., training data for fiscal years up to two years before the test year), but discussed the trade-offs in using a shorter gap period (more data, but more measurement error).
+How would you evaluate alternative gap periods?
+
+8. Which results are emphasized in @Bao:2020aa?
+What are the equivalent values in @Bao:2022aa?
+Which results are emphasized in @Bao:2022aa?
+
+9. Which audience (e.g., practitioners, researchers) would be most interested in the results of @Bao:2020aa and @Bao:2022aa?
+What limitations of @Bao:2020aa and @Bao:2022aa might affect the interest of this audience?
+
+10. Provide reasons why the tree-based models outperform the logit-based models in this setting?
+Do you think this might be related to the set of features considered?
+How might you alter the features if you wanted to improve the performance of the logit-based models?
+
+```{r}
+#| include: false
+test_years <- 2003:2008
+
+test_dates <- 
+  tibble(test_year = test_years) |>
+  mutate(test_date = as.Date(paste0(test_year + 1, "-09-30")))
+```
