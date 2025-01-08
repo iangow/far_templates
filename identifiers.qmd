@@ -48,13 +48,12 @@ ccm_link <-
 
 ### Exercises
 
-1. If you look at the stock tables (`crsp.dsf` and `crsp.msf`), you will see that `prc` can be negative on either table.
+1. Looking at `crsp.dsf` and `crsp.msf`, we see that `prc` can be negative.
 Do negative stock prices make sense economically?
-What do negative stock prices on CRSP mean? 
-(CRSP documentation can be found on [the WRDS website](https://wrds-www.wharton.upenn.edu/pages/support/manuals-and-overviews/crsp/stocks-and-indices/overview-crsp-us-stock-database/#dataset-organization).)
-What would be some alternative approaches to encode this information? 
-(Write code to recast the data using one of these approaches.)
-Why do you think that CRSP chose the approach used?
+What do negative stock prices on CRSP mean?^[CRSP documentation can be found at <https://go.unimelb.edu.au/gcd8>.]
+What would be an alternative approach to encode this information? 
+(Write code to recast the data using this approach.)
+Why do you think that CRSP chose the approach it uses?
 
 2. How do `ret` and `retx` differ?
 Which variable are you more likely to use in research?
@@ -62,18 +61,13 @@ Which variable are you more likely to use in research?
 3. Looking at the `date` variable on `crsp.msf`, is it always the last day of the month?
 If not, why not?
 
+4. Suggest the "natural" primary key for `crsp.dsf` and `crsp.msf`.
+Check that this is a valid primary key for `crsp.msf`.
 
-4. Suggest the "natural" primary key for these tables.
-Check that this is a primary key for `crsp.msf`.
-
-5. What is being depicted in @fig-mys-plot1 and @fig-mys-plot2?
-What are the sources of variation across months in the first plot?
-Looking at the plots, what appears to be the main driver of variation in the first plot.
-Create an additional plot to visualize the source of variation in the first not depicted below.
-In the code below, we are using `collect()` followed by `mutate(month = floor_date(date, "month"))` to calculate `month`. 
-What changes occur in terms of where the processing happens if we replace these two lines with `mutate(month = as.Date(floor_date("month", date)))`?
+5. In the code below, we are using `collect()` followed by `mutate(month = floor_date(date, "month"))` to calculate `month`. 
+What changes occur in terms of where the processing happens if we replace these two lines with `mutate(month = as.Date(floor_date(date, "month"))) |> collect()`?
 Do we get different results?
-Why do we need the `as.Date()` function in the second case?
+What effect does `as.Date()` have?
 
 ```{r}
 #| include: false
@@ -84,6 +78,12 @@ plot_data <-
   collect() |>
   mutate(month = floor_date(date, "month"))
 ```
+
+6. What is being depicted in Figures [-@fig-mys-plot1] and [-@fig-mys-plot2]?
+What are the sources of variation across months in @fig-mys-plot1?
+Can you guess what is the main driver of variation in @fig-mys-plot2?
+Create an additional plot to visualize the source of variation in @fig-mys-plot1 not depicted in @fig-mys-plot2.
+
 ```{r}
 #| label: fig-mys-plot1
 #| fig-cap: Number of observations by month (#1)
@@ -111,10 +111,9 @@ plot_data |>
   theme(axis.text.x = element_text(angle = 90))
 ```
 
-6. What is the primary key for `crsp.dsi` and `crsp.msi`? 
-Verify that it is a valid key for both tables.
+7. What is the primary key for `crsp.dsi` and `crsp.msi`? Verify that it is a valid key for both tables. 
 
-7. Using the `dplyr` verb `anti_join()`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
+8. Using the `dplyr` verb `anti_join()`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
 Do the same for `crsp.msi` and `crsp.msf`.
 
 8. General Motors Corporation declared bankruptcy in June 2009.
@@ -123,6 +122,8 @@ Do the answers make sense given the underlying economic and accounting realities
 (*Hint:* You can find the relevant PERMNOs on `stocknames` using the ticker "GM".)
 
 ## All about CUSIPs
+
+### Exercises
 
 ### Exercises
 
@@ -195,6 +196,7 @@ funda_link_combined <-
   collect()
 ```
 
+
 6. Choose a row from `funda_link_combined` where `same_permco` is `FALSE`.
 Can you discern from the underlying tables what issue is causing the difference and which match (if any) is valid?
 (*Hint:* Do rows where `gvkey %in% c("065228", "136265")` meet this condition?
@@ -206,8 +208,7 @@ Can you discern from the underlying tables whether the CUSIP-based match is vali
 (*Hint:* Do rows where `gvkey %in% c("033728", "346027")` meet this condition?
 What appears to be the issue for these GVKEYs?)
 
-8. Given the results shown in @tbl-ccm-cusip-comp and @tbl-ccm-cusip-cov and your answer to the previous two questions, 
-can you conclude that the CCM-based match is preferred to the CUSIP-based match in each case?
+8. Given the results shown in Tables [-@tbl-ccm-cusip-comp] and [-@tbl-ccm-cusip-cov] and your answer to the previous two questions, can you conclude that the CCM-based match is preferred to the CUSIP-based match in each case?
 
 ```{r}
 #| label: tbl-ccm-cusip-comp
@@ -227,3 +228,7 @@ funda_link_combined |>
   kbl(booktabs = TRUE)
 ```
 
+```{r}
+#| include: false
+dbDisconnect(db)
+```
