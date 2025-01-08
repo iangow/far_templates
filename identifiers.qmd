@@ -116,11 +116,6 @@ plot_data |>
 8. Using the `dplyr` verb `anti_join()`, determine if there are any dates on `crsp.dsf` that do not appear on `crsp.dsi` or vice versa.
 Do the same for `crsp.msi` and `crsp.msf`.
 
-8. General Motors Corporation declared bankruptcy in June 2009.
-Does the successor firm General Motors *Company* have the same GVKEY as General Motors Corporation? The same PERMNO?
-Do the answers make sense given the underlying economic and accounting realities?
-(*Hint:* You can find the relevant PERMNOs on `stocknames` using the ticker "GM".)
-
 ## All about CUSIPs
 
 ### Exercises
