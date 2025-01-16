@@ -115,6 +115,14 @@ fundq_mod <-
   select(gvkey, datadate, rdq) |>
   mutate(rdq_month = as.Date(floor_date(rdq, unit = "month"))) 
 
+annc_events <-
+  fundq |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  filter(fqtr == 4, fyr == 12, !is.na(rdq)) |>
+  select(gvkey, datadate, rdq) |>
+  mutate(annc_month = as.Date(floor_date(rdq, unit = "month"))) 
+
 crsp_dates <-
   msi |>
   select(date) |>
@@ -122,34 +130,41 @@ crsp_dates <-
   mutate(td = row_number()) |>
   mutate(month = as.Date(floor_date(date, unit = "month")))
 
-td_link <-
+annc_months <-
   crsp_dates |>
   select(month, td) |> 
-  rename(rdq_td = td, rdq_month = month) |>
-  mutate(td = generate_series(rdq_td - 11L, rdq_td + 6L)) |>
-  inner_join(crsp_dates, by = "td") |>
-  mutate(rel_td = td - rdq_td) |>
-  select(rdq_month, rel_td, date)
+  rename(annc_month = month, annc_td = td) |>
+  mutate(start_td = annc_td - 11L,
+         end_td = annc_td + 6L)
+
+td_link <-
+  crsp_dates |>
+  inner_join(annc_months, join_by(between(td, start_td, end_td))) |>
+  mutate(rel_td = td - annc_td) |>
+  select(annc_month, rel_td, date)
 
 ccm_link <-
   ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
          linkprim %in% c("C", "P")) |>
   rename(permno = lpermno) |>
+  mutate(linkenddt = coalesce(linkenddt, max(linkenddt, na.rm = TRUE))) |>
   select(gvkey, permno, linkdt, linkenddt) 
 
 rets_all <-
-  fundq_mod |> 
-  inner_join(td_link, by = "rdq_month") |>
+  annc_events |> 
+  inner_join(td_link, by = "annc_month") |>
   inner_join(ccm_link, by = "gvkey") |>
-  filter(rdq_month >= linkdt, rdq_month <= linkenddt | is.na(linkenddt)) |>
+  filter(annc_month >= linkdt, annc_month <= linkenddt) |>
   inner_join(msf, by = c("permno", "date")) |>
-  inner_join(stocknames, by = "permno") |>
-  filter(between(date, namedt, nameenddt),
-         exchcd %in% c(1, 2, 3)) |>
+  collect() |>
+  inner_join(
+    stocknames |> 
+      filter(exchcd %in% c(1, 2, 3)) |>
+      collect(), 
+    join_by(permno, between(date, namedt, nameenddt))) |>
   select(gvkey, datadate, rel_td, permno, date, ret) |>
-  filter(between(year(datadate), 1987L, 2002L)) |>
-  collect()
+  filter(between(year(datadate), 1987L, 2002L))
 
 full_panel <-
   rets_all |> 
@@ -242,7 +257,7 @@ read_data <- function(start, end) {
                               quantile == "Lo 10" ~ "1",
                               grepl("^Dec ", quantile) ~
                                 sub("^Dec ", "", quantile),
-                              TRUE ~ NA_character_),
+                              TRUE ~ NA),
            decile = as.integer(decile)) |>
     filter(!is.na(decile)) |>
     select(-quantile)
@@ -255,11 +270,15 @@ vw_rets <-
 ew_rets <- 
   read_data(ew_start, ew_end) |>
   rename(ew_ret = ret)
+```
 
+```{r size_rets}
+#| include: false
 size_rets <-
   ew_rets |>
   inner_join(vw_rets, by = c("month", "decile")) |>
-  select(month, decile, everything())
+  select(month, decile, everything()) |>
+  copy_to(db, df = _, name = "size_rets")
 ```
 
 ```{r me_breakpoints}
@@ -336,10 +355,15 @@ plot_data <-
 ```
 
 ```{r}
+#| label: fig-bb-1
+#| fig-cap: Replication of Figure 1 of @Ball:1968ub
+#| fig-alt: "Plot of cumulative abnormal returns from month -11 to month +6 for two earnings portfolios formed based on the sign of earnings news at announcement (month 0). Plot shows consistent positive returns for the good news portfolio up to month 0 and consistent negative returns for the bad news portfolio up to month 0. There are signs that the two lines continue to diverge even after month 0."
 #| echo: false
 plot_data |>
-  ggplot(aes(x = rel_td, y = aret_ew, line = earn_gn)) +
-  geom_line()
+  mutate(`Earnings news` = if_else(earn_gn, "Good", "Bad")) |>
+  ggplot(aes(x = rel_td, y = aret_ew, linetype = `Earnings news`)) +
+  geom_line() +
+  theme(legend.position = "bottom")
 ```
 
 ### Exercises
