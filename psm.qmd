@@ -1,0 +1,399 @@
+---
+title: "Exercise solutions for 'Matching'"
+author: Ian D. Gow
+date: 2025-01-14
+date-format: "D MMMM YYYY"
+format:
+  pdf: 
+    colorlinks: true
+    geometry:
+      - left=2.5cm
+      - right=2.5cm
+    papersize: a4
+    mainfont: TeX Gyre Pagella
+    mathfont: TeX Gyre Pagella Math
+    csl: journal-of-financial-economics.csl
+bibliography: book.bib
+---
+
+```{r}
+#| message: false
+#| include: false
+library(tidyverse)
+library(DBI)
+library(farr)
+library(dbplyr)        # window_order()
+library(fixest)
+library(modelsummary)
+library(MatchIt)       # match.data(), matchit()
+library(optmatch)
+```
+
+```{r}
+#| eval: true
+#| include: false
+db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+
+company <- tbl(db, Id(schema = "comp", table = "company"))
+funda <- tbl(db, Id(schema = "comp", table = "funda"))
+r_auditors <- tbl(db, Id(schema = "comp", table = "r_auditors"))
+```
+
+```{r}
+#| include: false
+size_big4 <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  filter(sale > 0, at > 0, fyear == 2019, !is.na(au)) |>
+  mutate(au = as.integer(au)) |>
+  select(gvkey, datadate, fyear, au, prcc_f, csho) |>
+  mutate(big4 = au %in% 1:8L,
+         mkt_cap = prcc_f * csho * 1e6) |>
+  arrange(gvkey, datadate) |>
+  collect()
+```
+
+## Simulation analysis {#sec-psm-sim}
+
+```{r}
+#| include: false
+prob_big4 <-
+  size_big4 |>
+  filter(mkt_cap > 1e6) |> 
+  select(big4, mkt_cap) |>
+  mutate(log_mkt_cap = log10(mkt_cap)) |>
+  mutate(bin = cut(log_mkt_cap, breaks = seq(6, 12.25, 0.25))) |>
+  group_by(bin) |>
+  mutate(p_big4 = mean(big4)) |>
+  ungroup()
+```
+
+```{r}
+#| label: sim_auditor
+#| cache: false
+#| include: false
+get_data <- function(effect = 0, n_firms = 5000, seed = 2021) {
+  set.seed(2021)
+    prob_big4 |>
+    sample_n(size = n_firms) |>
+    mutate(rand = runif(nrow(pick(everything()))),
+           big4 = rand < p_big4,
+           epsilon = rnorm(nrow(pick(everything()))),
+           id = 1:nrow(pick(everything()))) |>
+    mutate(audit_quality = big4 * effect + mkt_cap^(1/3) * 0.003 + epsilon) |>
+    select(id, big4, mkt_cap, log_mkt_cap, audit_quality)
+  
+}
+
+sim_auditor <- get_data()
+```
+
+```{r}
+#| cache: false
+#| include: false 
+get_matches <- function(df, caliper = 0.03) {
+
+  sim_fm <- glm(!big4 ~ mkt_cap, data = df, 
+              family = binomial(link = "logit"))
+  
+  sim_match_pscores <-
+    df |>
+    mutate(pscore = predict(sim_fm, type = "response"))
+
+  sim_matches <- 
+    matchit(!big4 ~ mkt_cap, data = sim_match_pscores, 
+            caliper = caliper) |>
+    match.data()
+
+  sim_matches
+}
+
+sim_matches <- get_matches(sim_auditor)
+```
+
+```{r}
+#| label: tbl-sample-matches
+#| tbl-cap: Sample matched pairs
+#| echo: false
+#| include: false
+#| render: !expr function(x, ...) knitr::knit_print(knitr::kable(x, digits = 3, format.args = list(big.mark = ',')))
+sim_matches |> 
+  filter(subclass %in% c(220, 481, 333)) |> 
+  select(id, big4, mkt_cap, pscore, subclass) |>
+  arrange(subclass, big4)
+```
+
+```{r}
+#| include: false
+run_sims <- function(effect = 0, n_firms = 5000, seed = 2021, caliper = 0.03) {
+  df <- get_data(effect, n_firms = n_firms, seed = seed) 
+  df_matched <- get_matches(df, caliper = caliper)
+  
+  fms <- list(
+    "Full sample" = lm(audit_quality ~ big4 + I(mkt_cap / 1e9), data = df),
+    "PSM, t-test" = feols(audit_quality ~ big4, data = df_matched),
+    "PSM, MR" = feols(audit_quality ~ big4 + I(mkt_cap / 1e9), data = df_matched)
+  )
+  
+}
+
+fms <- run_sims()
+```
+
+```{r}
+#| label: tbl-aq-matched
+#| tbl-cap: Relation between `big4` and audit quality
+#| cache: true
+#| include: false
+modelsummary(fms,
+             estimate = "{estimate}{stars}",
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+### Exercises
+
+1. What happens in the above analyses if the true effect of `big4` on audit quality is `10` instead of `0`?
+
+2. What happens in the above analyses if the caliper is reduced to `0.01` from `0.03` (but the true effect of `big4` on audit quality is still `0`)?
+
+3. What happens in the above analyses if the caliper is reduced to `0.01` from `0.03` and the true effect of `big4` on audit quality is `10`?
+
+4. Given the above, what are your conclusions about the value of propensity-score matching and OLS in causal inference?
+
+5. What regression results do you get if you repeat the analysis shown in [Table 25.4](https://iangow.github.io/far_book/psm.html#tbl-lin-reg), but replace `I(mkt_cap / 1e+09)` with `I(mkt_cap^(1/3) * 0.003)`?
+Does this suggest a solution to the issues we see above?
+If so, what challenges does such a solution face?
+
+6. Was endogeneity an issue in the simulation above? 
+If not, why not? If so, in what way, and what could you do to address it?
+
+```{r}
+#| label: comp
+#| cache: false
+#| include: false
+comp <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  filter(!is.na(sich), !between(sich, 6000, 6999),
+         sale > 0, at > 0,
+         (dltt >= 0 | is.na(dltt)) & (dlc >= 0 | is.na(dlc)),
+         prcc_f * csho > 0, ceq > 0) |>
+  select(gvkey, datadate, fyear, au, prcc_f, csho, at, ib,
+         dltt, dlc, rect, ppent, sale, act, lct, sich,
+         oancf) |>
+  mutate(sic2 = floor(sich / 100)) |>
+  filter(between(fyear, 1988, 2006)) |>
+  group_by(gvkey) |>
+  window_order(fyear) |>
+  mutate(lag_fyear = lag(fyear),
+         avg_at = (lag(at) + at) / 2,
+         log_at = log(at),
+         aturn = if_else(lag(at) > 0, sale / lag(at), NA),
+         inv_avg_at = 1 / avg_at,
+         d_sale = sale - lag(sale),
+         d_rect = rect - lag(rect),
+         d_sale_at = (d_sale - d_rect) / avg_at,
+         ppe_at = ppent / avg_at,
+         curr = if_else(lct > 0, act / lct, NA),
+         lag_curr = lag(curr),
+         lev = if_else(avg_at > 0, 
+                       (dltt + coalesce(dlc, 0)) / avg_at, NA),
+         lag_lev = lag(lev),
+         roa = if_else(avg_at > 0, ib / avg_at, NA),
+         lag_roa = lag(roa),
+         accruals = ib - oancf,
+         ta = accruals / avg_at,
+         mkt_cap = prcc_f * csho,
+         log_mkt = if_else(mkt_cap > 0, log(mkt_cap), NA)) |>
+  ungroup() |>
+  filter(lag_fyear == fyear - 1L) |>
+  collect()
+```
+
+```{r}
+#| label: industries
+#| cache: false
+#| include: false
+industries <- 
+  comp |>
+  group_by(fyear, sic2) |>
+  summarize(n_firms = n(), .groups = "drop") |>
+  filter(n_firms >= 10) 
+```
+
+```{r}
+#| label: get_klw_data
+#| cache: false
+#| include: false
+get_klw_data <- function(sic2, fyear, ...) {
+
+  reg_data <-
+    comp |>
+    filter(sic2 == !!sic2, fyear == !!fyear) 
+           
+  fm <- tryCatch(lm(ta ~ inv_avg_at + d_sale_at + ppe_at,
+                    data = reg_data, na.action = na.exclude),
+                 error = function(e) NULL)
+    
+  if (is.null(fm)) return(NULL)
+  
+  results <-
+    reg_data |> 
+    select(gvkey, fyear, roa) |>
+    bind_cols(da = resid(fm)) |>
+    filter(!is.na(da))
+  
+  results |>
+    inner_join(results, by = "fyear",
+               suffix = c("", "_match"),
+               relationship = "many-to-many") |>
+    filter(gvkey != gvkey_match) |>
+    mutate(roa_diff = abs(roa - roa_match)) |>
+    group_by(gvkey, fyear) |>
+    filter(roa_diff == min(roa_diff, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(ada = abs(da - da_match)) |>
+    select(gvkey, fyear, da, ada)
+}
+```
+
+```{r}
+#| label: klw_results
+#| cache: false
+#| include: false
+klw_results <- 
+  industries |> 
+  pmap(get_klw_data) |> 
+  bind_rows()
+```
+
+```{r}
+#| label: full_sample
+#| cache: false
+#| message: false
+#| include: false
+full_sample <-
+  comp |>
+  inner_join(klw_results, by = c("gvkey", "fyear")) |>
+  filter(avg_at > 0) |>
+  mutate(big4 = au %in% 1:8L,
+         mkt_cap = prcc_f * csho,
+         log_mkt = if_else(mkt_cap > 0, log(mkt_cap), NA))
+
+fms <- list("OLS" = feols(ada ~ big4 + log_mkt + lag_roa + 
+                            lag_lev + lag_curr | sic2 + fyear,
+                          data = full_sample))
+```
+
+```{r}
+#| label: full_sample_win
+#| cache: false
+#| message: false
+#| include: false
+win_vars <- c("ada", "log_mkt", "lag_roa", "lag_lev", "lag_curr",
+              "roa", "lev", "curr", "mkt_cap")
+
+full_sample_win <-
+  full_sample |>
+  mutate(across(all_of(win_vars),
+                \(x) winsorize(x, prob = 0.01)))
+
+fms[["OLS, win"]] <- 
+  feols(ada ~ big4 + log_mkt + lag_roa + lag_lev + lag_curr | 
+              sic2 + fyear, 
+        ~ gvkey + fyear,
+        data = full_sample_win)
+```
+
+```{r}
+#| label: lmz_fm
+#| cache: false
+#| message: false
+#| include: false
+lmz_match <-
+  full_sample |>
+  filter(if_all(c(log_at, log_mkt, aturn, curr, lev, roa),
+                \(x) !is.na(x))) |>
+  matchit(!big4 ~ log_at + log_mkt + aturn +
+                    curr + lev + roa, 
+          data = _,
+          caliper = 0.0300, std.caliper = FALSE,
+          m.order = "largest", discard = "both")
+
+fms[["PSM"]] <-  
+  lmz_match |>
+  match.data() |>
+  feols(ada ~ big4 + log_mkt + lag_roa + lag_lev + lag_curr | 
+              sic2 + fyear, ~ gvkey + fyear, 
+        data = _)
+```
+
+```{r}
+#| label: lmz_fm_win
+#| cache: false
+#| message: false
+#| include: false
+lmz_match_win <- 
+  full_sample_win |>
+  filter(if_all(c(log_at, log_mkt, aturn, curr, lev, roa),
+                \(x) !is.na(x))) |>
+  matchit(!big4 ~ log_at + log_mkt + aturn + curr + lev + roa, 
+          data = _,
+          caliper = 0.0300, std.caliper = FALSE,
+          m.order = "largest", discard = "both")
+
+lmz_matched_win <- match.data(lmz_match_win)
+
+fms[["PSM, win"]] <-  
+  feols(ada ~ big4 + log_mkt + lag_roa + lag_lev + lag_curr | 
+              sic2 + fyear, 
+        ~ gvkey + fyear,
+        data = lmz_matched_win)
+```
+
+```{r}
+#| label: tbl-big4-actual
+#| tbl-cap: Relation between Big 4 and absolute value of discretionary accruals
+#| echo: false
+#| include: false
+modelsummary(fms,
+             estimate = "{estimate}{stars}",
+             gof_map = c("nobs", "r.squared"),
+             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+```
+
+```{r}
+#| include: false
+dbDisconnect(db)
+```
+\newpage
+## Discussion questions
+
+1. Given the evidence presented in the simulation, how do you interpret the regression results presented above?
+How do @DeFond:2017wl appear to interpret the results?
+
+2. Referring back to the basic causal relations described in Section 4.2, what is the causal diagram implied by equation (1) and Table 2 of @Lawrence:2011tv?
+What variables are in *PROXY_CONTROLS* for Table 2?
+Why is *LOG_ASSETS* not found in Table 2?
+
+3. Do @Lawrence:2011tv report results from estimating equation (1)?
+What happens to the "difference in means" between the Full Sample and the Propensity-Score Matched Sample in Table 1?
+Does this make sense?
+
+4. Why do you think the difference in means is still statistically significant for two variables in the Propensity-Score Matched Sample column of Table 1 in @Lawrence:2011tv? 
+Do you think this is a concern?
+
+5. @Lawrence:2011tv evaluate three outcomes as measures of audit quality: discretionary accruals, cost of equity, and analyst forecast accuracy?
+Evaluate each of these measures. 
+Which do you think is best?
+What are the strengths and weaknesses of this best measure?
+
+6. Can you think of other measures of audit quality that might make sense?
+
+7. Apply the check list of @Shipman:2016fs [217--218] and the questions in Panels B and C of Table 1 of @Shipman:2016fs to @Lawrence:2011tv.
+How do @Lawrence:2011tv stack up against these?
+
+## References {-}
