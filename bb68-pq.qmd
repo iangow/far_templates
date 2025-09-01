@@ -10,14 +10,10 @@ bibliography: book.bib
 ```{r}
 #| message: false
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
+library(tidyverse)
 library(DBI)
-library(readr)
-library(tidyr)
-library(lubridate)
-library(ggplot2)
-library(dbplyr)     # For window_order()
 library(farr)
+library(dbplyr)     # window_order()
 ```
 
 ```{r}
@@ -42,7 +38,7 @@ Do you find the paper to provide a persuasive answer to its research question?
 What do you notice?
 
 3. Given that "the most fundamental result" of @Ball:1968ub relates to an association or correlation, is it correct to say that the paper provides no evidence on causal linkages?
-Does this also mean that @Ball:1968ub is a "merely" descriptive paper according to the taxonomy of research papers outlined in Chapter \@ref(causal-inf).
+Does this also mean that @Ball:1968ub is a "merely" descriptive paper according to the taxonomy of research papers outlined in Chapter 4?
 How might the results of @Ball:1968ub be represented in a causal diagram assuming that accounting information is meaningful and markets are efficient?
 Would an alternative causal diagram be assumed by a critic who viewed accounting information as meaningless?
 
@@ -219,25 +215,25 @@ download.file(url, t)
 
 # Determine breakpoints (lines) for different tables
 temp <- read_lines(t)
-vw_start <- grep("^\\s+Value Weight Returns -- Monthly", temp)
-vw_end <- grep("^\\s+Equal Weight Returns -- Monthly", temp) - 4
+vw_start <- str_which(temp, "^\\s+Average Value Weight Returns -- Monthly")
+vw_end <-  str_which(temp, "^\\s+Average Equal Weighted Returns -- Monthly") - 4
 
-ew_start <- grep("^\\s+Equal Weight Returns -- Monthly", temp)
-ew_end <- grep("^\\s+Value Weight Returns -- Annual", temp) - 4
+ew_start <- str_which(temp, "^\\s+Average Equal Weighted Returns -- Monthly")
+ew_end <- str_which(temp, "^\\s+Value Weight Returns -- Annual") - 4
 
 read_data <- function(start, end) {
 
   Sys.setenv(VROOM_CONNECTION_SIZE = 500000)
   
   fix_names <- function(names) {
-    gsub("^$", "date", names)
+    str_replace_all(names, "^$", "date")
   }
 
   read_csv(t, skip = start, n_max = end - start,
-           na = c("-99.99"),
+           na = "-99.99",
            name_repair = fix_names,
            show_col_types = FALSE) |>
-    mutate(month = ymd(paste0(date, "01"))) |>
+    mutate(month = ymd(str_c(date, "01"))) |>
     select(-date) |>
     pivot_longer(names_to = "quantile",
                  values_to = "ret",
@@ -245,9 +241,8 @@ read_data <- function(start, end) {
     mutate(ret = ret / 100,
            decile = case_when(quantile == "Hi 10" ~ "10",
                               quantile == "Lo 10" ~ "1",
-                              grepl("^Dec ", quantile) ~
-                                sub("^Dec ", "", quantile),
-                              TRUE ~ NA),
+                              str_detect(quantile, "-Dec") ~
+                                sub("-Dec", "", quantile)),
            decile = as.integer(decile)) |>
     filter(!is.na(decile)) |>
     select(-quantile)
