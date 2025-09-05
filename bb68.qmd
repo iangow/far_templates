@@ -19,8 +19,7 @@ I highly recommend that you use an RStudio "project" to organize your work for *
 The code chunks are labelled as follows:
  
  - `wrds_data`
- - `me_breakpoints`
- - `size_rets_raw`
+ - `max_cutoff`
 
 ```{r}
 #| message: false
@@ -91,26 +90,19 @@ Which questions (or facts) does BB68 address in these terms?
 ```{r wrds_data}
 #| include: false
 #| cache: true
-pg <- dbConnect(RPostgres::Postgres(), 
+db <- dbConnect(RPostgres::Postgres(), 
                 bigint = "integer", 
                 check_interrupts = TRUE)
 
-msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
-msi <- tbl(pg, Id(schema = "crsp", table = "msi"))
-ccmxpf_lnkhist <- tbl(pg, Id(schema = "crsp", 
+msf <- tbl(db, Id(schema = "crsp", table = "msf"))
+msi <- tbl(db, Id(schema = "crsp", table = "msi"))
+ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", 
                              table = "ccmxpf_lnkhist"))
-stocknames <- tbl(pg, Id(schema = "crsp", table = "stocknames"))
+stocknames <- tbl(db, Id(schema = "crsp", 
+                         table = "stocknames"))
 
-funda <- tbl(pg, Id(schema = "comp", table = "funda"))
-fundq <- tbl(pg, Id(schema = "comp", table = "fundq"))
-
-fundq_mod <-
-  fundq |>
-  filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D") |>
-  filter(fqtr == 4, fyr == 12, !is.na(rdq)) |>
-  select(gvkey, datadate, rdq) |>
-  mutate(rdq_month = as.Date(floor_date(rdq, unit = "month"))) 
+funda <- tbl(db, Id(schema = "comp", table = "funda"))
+fundq <- tbl(db, Id(schema = "comp", table = "fundq"))
 
 annc_events <-
   fundq |>
@@ -125,7 +117,15 @@ crsp_dates <-
   select(date) |>
   window_order(date) |>
   mutate(td = row_number()) |>
-  mutate(month = as.Date(floor_date(date, unit = "month")))
+  mutate(month = as.Date(floor_date(date, unit = "month"))) 
+
+fundq_mod <-
+  fundq |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D") |>
+  filter(fqtr == 4, fyr == 12, !is.na(rdq)) |>
+  select(gvkey, datadate, rdq) |>
+  mutate(rdq_month = as.Date(floor_date(rdq, unit = "month"))) 
 
 annc_months <-
   crsp_dates |>
@@ -146,7 +146,7 @@ ccm_link <-
          linkprim %in% c("C", "P")) |>
   rename(permno = lpermno) |>
   mutate(linkenddt = coalesce(linkenddt, max(linkenddt, na.rm = TRUE))) |>
-  select(gvkey, permno, linkdt, linkenddt) 
+  select(gvkey, permno, linkdt, linkenddt)
 
 rets_all <-
   annc_events |> 
@@ -211,109 +211,13 @@ news <-
          cfo_decile = ntile(cfo_chg, 10)) |>
   ungroup() |>
   collect()
-```
 
-```{r size_rets_raw}
-#| include: false
-#| cache: true
+size_rets <- get_size_rets_monthly()
 
-# Download the data
-t <- tempfile(fileext = ".zip")
-url <- paste0("http://mba.tuck.dartmouth.edu",
-              "/pages/faculty/ken.french/ftp/",
-              "Portfolios_Formed_on_ME_CSV.zip")
-download.file(url, t)
+me_breakpoints_raw <- get_me_breakpoints()
 
-# Determine breakpoints (lines) for different tables
-temp <- read_lines(t)
-vw_start <- str_which(temp, "^\\s+Average Value Weight Returns -- Monthly")
-vw_end <-  str_which(temp, "^\\s+Average Equal Weighted Returns -- Monthly") - 4
+me_breakpoints <- me_breakpoints_raw
 
-ew_start <- str_which(temp, "^\\s+Average Equal Weighted Returns -- Monthly")
-ew_end <- str_which(temp, "^\\s+Value Weight Returns -- Annual") - 4
-
-read_data <- function(start, end) {
-
-  Sys.setenv(VROOM_CONNECTION_SIZE = 500000)
-  
-  fix_names <- function(names) {
-    str_replace_all(names, "^$", "date")
-  }
-
-  read_csv(t, skip = start, n_max = end - start,
-           na = "-99.99",
-           name_repair = fix_names,
-           show_col_types = FALSE) |>
-    mutate(month = ymd(str_c(date, "01"))) |>
-    select(-date) |>
-    pivot_longer(names_to = "quantile",
-                 values_to = "ret",
-                 cols = -month) |>
-    mutate(ret = ret / 100,
-           decile = case_when(quantile == "Hi 10" ~ "10",
-                              quantile == "Lo 10" ~ "1",
-                              str_detect(quantile, "-Dec") ~
-                                sub("-Dec", "", quantile)),
-           decile = as.integer(decile)) |>
-    filter(!is.na(decile)) |>
-    select(-quantile)
-}
-
-vw_rets <- 
-  read_data(vw_start, vw_end) |>
-  rename(vw_ret = ret)
-
-ew_rets <- 
-  read_data(ew_start, ew_end) |>
-  rename(ew_ret = ret)
-```
-
-```{r size_rets}
-#| include: false
-size_rets <-
-  ew_rets |>
-  inner_join(vw_rets, by = c("month", "decile")) |>
-  select(month, decile, everything()) |>
-  copy_to(db, df = _, name = "size_rets")
-```
-
-```{r me_breakpoints}
-#| include: false
-#| cache: true
-t <- tempfile(fileext = ".zip")
-url <- paste0("http://mba.tuck.dartmouth.edu",
-              "/pages/faculty/ken.french/ftp/",
-              "ME_Breakpoints_CSV.zip")
-download.file(url, t)
-
-temp <- read_lines(t)
-
-me_breakpoints_raw <- 
-  read_csv(t, skip = 1, 
-           col_names = c("month", "n",
-                         paste0("p", seq(from = 5, to = 100, by = 5))),
-           col_types = "c",
-           n_max = grep("^Copyright", temp) - 3) |>
-  mutate(month = ymd(paste0(month, "01"))) |>
-  select(-ends_with("5"), -n) |>
-  pivot_longer(cols = - month,
-               names_to = "decile",
-               values_to = "cutoff") |>
-  mutate(decile = gsub("^p(.*)0$", "\\1", decile)) |>
-  mutate(decile = as.integer(decile)) 
-
-me_breakpoints <-
-  me_breakpoints_raw |>
-  group_by(month) |> 
-  arrange(decile) |> 
-  mutate(me_min = coalesce(lag(cutoff), 0), me_max = cutoff) |> 
-  mutate(me_max = if_else(decile == 10, Inf, me_max)) |>
-  select(-cutoff) |>
-  arrange(month, decile) 
-```
-
-```{r}
-#| include: false
 me_decile_assignments <-
   me_breakpoints |>
   inner_join(me_values, by = "month") |>
@@ -364,12 +268,13 @@ plot_data |>
 
 ### Exercises
 
-```{r}
+```{r max_cutoff}
 #| include: false
+#| cache: true
 max_cutoff <-
-  me_breakpoints_raw |> 
+  get_me_breakpoints(keep_max = TRUE) |> 
   filter(month == "2020-12-01", decile == 10) |>
-  select(cutoff) |>
+  select(me_max) |>
   pull()
 ```
 
@@ -387,12 +292,13 @@ me_breakpoints_raw |>
 ```{r}
 #| include: false
 #| eval: false
-# To use this code, remove "eval: false" above. To include this code in your submission, remove "include: false" above.
-# We create a new connection to Postgres here so that you don't # need to run the time-consuming code above to answer this
-# question.
+# To use this code, remove "eval: false" above.
+# To include this code in your submission, remove "include: false" above.
+# We create a new connection to Postgres here so that you don't 
+# need to run the time-consuming code above to answer this question.
 db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-msf <- tbl(pg, Id(schema = "crsp", table = "msf"))
+msf <- tbl(db, Id(schema = "crsp", table = "msf"))
 
 msf |> 
   filter(date == "2020-12-31") |>
