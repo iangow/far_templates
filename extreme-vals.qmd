@@ -33,7 +33,7 @@ options(tibble.width = 75)
 1.  Table 5 of @Leone:2019uc presents results from a simulation analysis.
     Which panel of that table likely best reflects the kind of data researchers encounter in practice?
 
-2.  Consider the left half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0$).
+2.  Consider the left half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0.8$).
     Using the panel you identified in question 1 above, interpret the implications of the simulation results for researchers in practice.
     Note that the mean estimates of $\beta_1$ using Cook's D or robust regression are very similar.
     Does Table 5 of @Leone:2019uc provide strong support for rejecting Cook's D in favour of robust regression?
