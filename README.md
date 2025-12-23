@@ -52,7 +52,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Natural experiments revisited | [natural-revisited.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited.qmd) |  [natural-revisited-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/natural-revisited-pq.qmd) |
 | Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)  | Use PostgreSQL template |
 | Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) |[panel-data-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data-pq.qmd) |
-| Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | Use PostgreSQL template |
+| Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | [rdd-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd-pq.qmd) |
  
 ### Part IV: Additional topics
 
