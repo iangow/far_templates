@@ -1,0 +1,253 @@
+---
+title: "Exercise template for 'Regression discontinuity designs'"
+author: Your name
+format: html
+bibliography: book.bib
+---
+
+```{r}
+#| message: false
+#| include: false
+library(tidyverse)
+library(DBI)
+library(farr)
+library(dbplyr)        # copy_inline()
+library(fixest)
+library(rdrobust)
+library(modelsummary)
+```
+
+```{r}
+#| label: iliev_2010
+#| include: false
+mr_req_df <- 
+  iliev_2010 |>
+  filter(!is.na(fdate)) |>
+  filter(fdate >= "2002-11-01", fdate <= "2005-10-31") |>
+  group_by(gvkey, fdate) |>
+  mutate(max_float = max(publicfloat), .groups = "drop") |>
+  filter(fdate >= "2004-11-15") |> 
+  mutate(mr_required = max_float >= 75) |>
+  ungroup()
+```
+
+```{r}
+#| include: false
+db <- dbConnect(duckdb::duckdb())
+
+bloomfield_2021 <- copy_to(db, df = farr::bloomfield_2021)
+iliev_2010 <- copy_to(db, df = farr::iliev_2010)
+ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", table = "ccmxpf_lnkhist")
+funda <- load_parquet(db, schema = "comp", table = "funda")
+factors_daily <- load_parquet(db, schema = "ff", table = "factors_daily")
+dsf <- load_parquet(db, schema = "crsp", table = "dsf")
+
+float_data <-
+  iliev_2010 |>
+  group_by(gvkey, fyear) |>
+  filter(publicfloat == min(publicfloat, na.rm = TRUE),
+         pfyear %in% c(2004, 2002)) |>
+  group_by(gvkey, pfyear) |>
+  summarize(float = mean(publicfloat, na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = pfyear, values_from = float,
+              names_prefix = "float")
+
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  rename(permco = lpermco) |>
+  select(gvkey, permco) |>
+  distinct()
+
+float_data_linked <-
+  float_data |>
+  inner_join(ccm_link, by = "gvkey")
+
+funda_mod <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+
+firm_years <-
+  funda_mod |>
+  mutate(sox = coalesce(as.double(auopic) > 0, FALSE)) |>
+  select(gvkey, fyear, datadate, sox)
+
+risk_asymm_sample <-
+  bloomfield_2021 |>
+  inner_join(ccm_link, by = "permco",
+             relationship = "many-to-many") |>
+  inner_join(firm_years, by = c("fyear", "gvkey")) |>
+  select(permco, datadate) |>
+  distinct() |>
+  mutate(period_start = datadate - months(12) + days(1))
+
+mkt_rets <- 
+  factors_daily |>
+  select(date, rf, mktrf) |>
+  collect() |>
+  mutate(mktrf = truncate(mktrf)) |>
+  filter(!is.na(mktrf)) |>
+  copy_to(db, df = _, name = "mkt_rets")
+```
+
+```{r}
+#| include: false
+risk_asymmetry <-
+  dsf |>
+  inner_join(risk_asymm_sample,
+             join_by(permco, 
+                     between(date, period_start, datadate))) |>
+  inner_join(mkt_rets, by = "date") |>
+  mutate(retrf = ret - rf,
+         sign_ret = mktrf >= 0) |>
+  group_by(permco, datadate, sign_ret) |>
+  summarize(slope = regr_slope(retrf, mktrf),
+            nobs = regr_count(retrf, mktrf),
+            .groups = "drop") |>
+  pivot_wider(id_cols = c("permco", "datadate"),
+              names_from = "sign_ret",
+              values_from = c("slope", "nobs")) |>
+  mutate(beta_minus = slope_FALSE,
+         beta_plus = slope_TRUE,
+         nobs = nobs_FALSE + nobs_TRUE) |>
+  select(permco, datadate, beta_minus,
+         beta_plus, nobs)
+
+cutoff <- 75
+
+reg_data <-
+  risk_asymmetry |>
+  left_join(float_data_linked, by = "permco") |>
+  left_join(firm_years, by = c("datadate", "gvkey")) |>
+  mutate(treat = coalesce(float2002 >= cutoff, TRUE),
+         post = datadate >= "2005-11-01",
+         year = year(datadate)) |>
+  collect() |>
+  mutate(across(starts_with("beta"), winsorize)) |>
+  mutate(risk_asymm = beta_minus - beta_plus)
+```
+
+## Discussion questions
+
+There are many discussion questions below and we expect that instructors will only assign a subset of these.
+You should read enough of the papers to be able to answer questions you have been assigned below.
+
+### @Hoekstra:2009wp
+
+1. What is the treatment in @Hoekstra:2009wp? 
+What alternative (control) is it being compared with?
+Is identifying the "treatment" received by the control group always as difficult as it is in @Hoekstra:2009wp? Provide examples from other papers or settings in your answer.
+
+2. Which approach makes the most sense in @Hoekstra:2009wp? Sharp RDD? Or fuzzy RDD? Why?
+
+3. RDD inherently estimated a "local" treatment effect. 
+Which group of potential students is the focus of @Hoekstra:2009wp?
+Can you think of other groups that we might be interested in learning more about? 
+How might the actual treatment effects for those groups differ and why?
+
+### @Bloomfield:2021va
+
+1. Compare the data in `iliev_2010` and `float_data` (as used in @Bloomfield:2021va) for the two firms shown in the output below.
+What choices has @Bloomfield:2021va made in processing the data for these two firms?
+Do these choices seem to be the best ones?
+If not, what alternative approach could be used?
+
+<ul>
+```{r}
+iliev_2010 |>
+  filter(gvkey == "001728")
+```
+</ul>
+
+<ul>
+```{r}
+float_data |>
+  filter(gvkey == "001728")
+```
+</ul>
+
+<ul>
+```{r}
+iliev_2010 |>
+  filter(gvkey == "028712")
+```
+</ul>
+
+<ul>
+```{r}
+float_data |>
+  filter(gvkey == "028712")
+```
+</ul>
+
+2. The code `treat = coalesce(float2002 >= cutoff, TRUE)` above is intended to replicate Stata code used by @Bloomfield:2021va: `generate treat = float2002 >= 75`.^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
+Why does the R code appear to be more complex? 
+What does Stata do that R does not do?
+(*Hint*: If you don't have access to Stata, you may find [this page](https://www.stata.com/support/faqs/data-management/logical-expressions-and-missing-values/) helpful.)
+
+3. @Bloomfield:2021va's Stata code for the `post` indicator reads `generate post = fyear - (fyr > 5 & fyr <  11) >= 2005`, where `fyear` is fiscal year from Compustat (see @sec-fyear) and `fyr` represents the month of the fiscal-year end (e.g., May would be `5`).^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
+The code above sets `post = datadate >= "2005-11-01"`.
+Are the two approaches equivalent? Do we seem to get the right values from `post` using either approach?
+
+4. In the text of the paper, @Bloomfield:2021va claims to "use firms' 2002 public floats ... as an instrument for whether or not the firm will become treated" and to "follow Iliev's [2010] regression discontinuity methodology".
+Evaluate each of these claims, providing evidence to support your position.
+
+5. @Bloomfield:2021va, inspired by @Iliev:2010ic, uses `float2002` rather than `float2004` as the running variable for treatment.
+What issues would you be concerned about with `float2004` that might be addressed using `float2002`?
+Provide some evidence to test your concerns. (*Hint:* @Iliev:2010ic uses plots, @McCrary:2008ft suggests some tests.)
+What implications do you see for the fuzzy RDD analysis we ran above using `float2004` as the running variable?
+
+6. Why do you think @Bloomfield:2021va did not include RDD analyses along the lines of the ones we have done above in his paper?
+
+7. In Table 4, @Bloomfield:2021va [p. 884] uses "a difference-in-differences design to identify the causal effect of reporting flexibility on risk asymmetry."
+As we say in @sec-panel-data, a difference-in-difference estimator adjusts differences in post-treatment outcome values by subtracting differences in pre-treatment outcome values.
+Why might differences in pre-treatment outcome values between observations on either side of the threshold be particularly problematic in RDD?
+Does the use of firm and year fixed effects (as @Bloomfield:2021va does in Table 4) address this problem?
+Or does it just suppress it?
+
+### @Boone:2015wi
+
+1.	What is the treatment in @Boone:2015wi? (*Hint*: Read the title.) Most of the analyses in the paper use a "sharp RD methodology" (see Section 4). 
+Does this make sense given the treatment? 
+Why or why not?
+
+2.	In Section 5, @Boone:2015wi suggest that while "pre-index assignment firm characteristics are similar around the threshold, one concern is that there could be differences in other unobservable firm factors, leading to a violation of the necessary assumptions for the sharp RD methodology."
+Is the absence of "differences in other unobservable firm factors" the requirement for sharp (rather than fuzzy) RD?
+
+3.	What implications, if any, does the discussion on pp. 94--95 of @Bebchuk:2017tp have for the arguments of @Boone:2015wi?
+4.	What is the treatment variable implied by the specification in Equation (1) in @Boone:2015wi?
+
+### @Manchiraju:2017uw
+
+1.	Identify some issues in applying RDD in @Manchiraju:2017uw? 
+What steps do the authors take to address these issues?
+
+2.	What is the treatment in @Manchiraju:2017uw? 
+Is this the same treatment variable as analysed in prior research?
+
+### @Ertimur:2015tr 
+
+1. Consider Figure 3. How persuasive do you find this plot as evidence of a significant market reaction to majority support in shareholder proposals on majority voting?
+What aspects of the plot do you find persuasive or unpersuasive?
+
+2. If shareholders react to successful shareholder proposals on majority voting so positively, why do so many shareholders vote against such proposals (e.g., a proposal that gets 51% support has 49% of shareholders voting against it)?
+
+3. @Ertimur:2015tr [p. 38] say "our analyses suggest that high votes withheld do not increase the likelihood of a director losing their seat but often cause boards to respond to the governance problems underlying the vote, suggesting that perhaps director elections are viewed by shareholders as a means to obtain specific governance changes rather than a channel to remove a director."
+How do you interpret this statement?
+Do you find it convincing?
+
+### @Li:2018tj
+
+1. Figure 1 of @Li:2018tj presents RDD plots. 
+How does the running variable in Figure 1 differ from that in other RDD analyses you have seen?
+What would you expect to be the relation between the running variable and the outcome variable?
+Would this vary from the left to the right of the cut-off?
+Do you agree with the decision of @Li:2018tj [p. 283] to "include high-order polynomials to allow for the possibility of nonlinearity around the cut off time"?
+
+2. What is the range of values of "distance to IDD adoption" reported in Figure 1? 
+What is the range of possible values given the sample period of @Li:2018tj and data reported in Appendix B of @Li:2018tj [p. 304]?
+
+3. @Li:2018tj [p. 283] say that "the figures in both panels show a clear discontinuity at the date of IDD adoption." 
+Do you agree with this claim?
