@@ -142,7 +142,7 @@ Is identifying the "treatment" received by the control group always as difficult
 
 2. Which approach makes the most sense in @Hoekstra:2009wp? Sharp RDD? Or fuzzy RDD? Why?
 
-3. RDD inherently estimated a "local" treatment effect. 
+3. RDD inherently estimates a "local" treatment effect. 
 Which group of potential students is the focus of @Hoekstra:2009wp?
 Can you think of other groups that we might be interested in learning more about? 
 How might the actual treatment effects for those groups differ and why?
