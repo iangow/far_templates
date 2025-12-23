@@ -187,7 +187,7 @@ Why does the R code appear to be more complex?
 What does Stata do that R does not do?
 (*Hint*: If you don't have access to Stata, you may find [this page](https://www.stata.com/support/faqs/data-management/logical-expressions-and-missing-values/) helpful.)
 
-3. @Bloomfield:2021va's Stata code for the `post` indicator reads `generate post = fyear - (fyr > 5 & fyr <  11) >= 2005`, where `fyear` is fiscal year from Compustat (see Section 14.1) and `fyr` represents the month of the fiscal-year end (e.g., May would be `5`).^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
+3. @Bloomfield:2021va's Stata code for the `post` indicator reads `generate post = fyear - (fyr > 5 & fyr < 11) >= 2005`, where `fyear` is fiscal year from Compustat (see Section 14.1) and `fyr` represents the month of the fiscal-year end (e.g., May would be `5`).^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
 The code above sets `post = datadate >= "2005-11-01"`.
 Are the two approaches equivalent? Do we seem to get the right values from `post` using either approach?
 
