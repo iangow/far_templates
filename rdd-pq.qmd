@@ -187,7 +187,7 @@ Why does the R code appear to be more complex?
 What does Stata do that R does not do?
 (*Hint*: If you don't have access to Stata, you may find [this page](https://www.stata.com/support/faqs/data-management/logical-expressions-and-missing-values/) helpful.)
 
-3. @Bloomfield:2021va's Stata code for the `post` indicator reads `generate post = fyear - (fyr > 5 & fyr <  11) >= 2005`, where `fyear` is fiscal year from Compustat (see @sec-fyear) and `fyr` represents the month of the fiscal-year end (e.g., May would be `5`).^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
+3. @Bloomfield:2021va's Stata code for the `post` indicator reads `generate post = fyear - (fyr > 5 & fyr <  11) >= 2005`, where `fyear` is fiscal year from Compustat (see Section 14.1) and `fyr` represents the month of the fiscal-year end (e.g., May would be `5`).^[Note that we have adapted @Bloomfield:2021va's code to reflect the variable names we use above.]
 The code above sets `post = datadate >= "2005-11-01"`.
 Are the two approaches equivalent? Do we seem to get the right values from `post` using either approach?
 
@@ -202,7 +202,7 @@ What implications do you see for the fuzzy RDD analysis we ran above using `floa
 6. Why do you think @Bloomfield:2021va did not include RDD analyses along the lines of the ones we have done above in his paper?
 
 7. In Table 4, @Bloomfield:2021va [p. 884] uses "a difference-in-differences design to identify the causal effect of reporting flexibility on risk asymmetry."
-As we say in @sec-panel-data, a difference-in-difference estimator adjusts differences in post-treatment outcome values by subtracting differences in pre-treatment outcome values.
+As we say in Chapter 21, a difference-in-difference estimator adjusts differences in post-treatment outcome values by subtracting differences in pre-treatment outcome values.
 Why might differences in pre-treatment outcome values between observations on either side of the threshold be particularly problematic in RDD?
 Does the use of firm and year fixed effects (as @Bloomfield:2021va does in Table 4) address this problem?
 Or does it just suppress it?
