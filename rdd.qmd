@@ -8,12 +8,12 @@ bibliography: book.bib
 ```{r}
 #| message: false
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
-library(farr)
+library(tidyverse)
 library(DBI)
-library(tidyr)
-library(lubridate)
-library(ggplot2)
+library(farr)
+library(dbplyr)        # copy_inline()
+library(fixest)
+library(rdrobust)
 library(modelsummary)
 ```
 
@@ -25,24 +25,108 @@ mr_req_df <-
   filter(!is.na(fdate)) |>
   filter(fdate >= "2002-11-01", fdate <= "2005-10-31") |>
   group_by(gvkey, fdate) |>
-  mutate(max_float = cummax(publicfloat), .groups = "drop") |>
+  mutate(max_float = max(publicfloat), .groups = "drop") |>
   filter(fdate >= "2004-11-15") |> 
   mutate(mr_required = max_float >= 75) |>
   ungroup()
 ```
 
 ```{r}
-#| label: float_data
 #| include: false
+db <- dbConnect(RPostgres::Postgres())
+
+bloomfield_2021 <- copy_inline(db, df = farr::bloomfield_2021)
+iliev_2010 <- copy_inline(db, df = farr::iliev_2010)
+ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
+funda <- tbl(db, Id(schema = "comp", table = "funda"))
+factors_daily <- tbl(db, Id(schema = "ff", table = "factors_daily"))
+dsf <- tbl(db, Id(schema = "crsp", table = "dsf"))
+
 float_data <-
   iliev_2010 |>
   group_by(gvkey, fyear) |>
-  filter(publicfloat == min(publicfloat),
+  filter(publicfloat == min(publicfloat, na.rm = TRUE),
          pfyear %in% c(2004, 2002)) |>
   group_by(gvkey, pfyear) |>
   summarize(float = mean(publicfloat, na.rm = TRUE), .groups = "drop") |>
   pivot_wider(names_from = pfyear, values_from = float,
               names_prefix = "float")
+
+ccm_link <-
+  ccmxpf_lnkhist |>
+  filter(linktype %in% c("LC", "LU", "LS"),
+         linkprim %in% c("C", "P")) |>
+  rename(permco = lpermco) |>
+  select(gvkey, permco) |>
+  distinct()
+
+float_data_linked <-
+  float_data |>
+  inner_join(ccm_link, by = "gvkey")
+
+funda_mod <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+
+firm_years <-
+  funda_mod |>
+  mutate(sox = coalesce(as.double(auopic) > 0, FALSE)) |>
+  select(gvkey, fyear, datadate, sox)
+
+risk_asymm_sample <-
+  bloomfield_2021 |>
+  inner_join(ccm_link, by = "permco",
+             relationship = "many-to-many") |>
+  inner_join(firm_years, by = c("fyear", "gvkey")) |>
+  select(permco, datadate) |>
+  distinct() |>
+  mutate(period_start = datadate - months(12) + days(1))
+
+mkt_rets <- 
+  factors_daily |>
+  select(date, rf, mktrf) |>
+  collect() |>
+  mutate(mktrf = truncate(mktrf)) |>
+  filter(!is.na(mktrf)) |>
+  copy_to(db, df = _, name = "mkt_rets")
+```
+
+```{r}
+#| include: false
+risk_asymmetry <-
+  dsf |>
+  inner_join(risk_asymm_sample,
+             join_by(permco, 
+                     between(date, period_start, datadate))) |>
+  inner_join(mkt_rets, by = "date") |>
+  mutate(retrf = ret - rf,
+         sign_ret = mktrf >= 0) |>
+  group_by(permco, datadate, sign_ret) |>
+  summarize(slope = regr_slope(retrf, mktrf),
+            nobs = regr_count(retrf, mktrf),
+            .groups = "drop") |>
+  pivot_wider(id_cols = c("permco", "datadate"),
+              names_from = "sign_ret",
+              values_from = c("slope", "nobs")) |>
+  mutate(beta_minus = slope_FALSE,
+         beta_plus = slope_TRUE,
+         nobs = nobs_FALSE + nobs_TRUE) |>
+  select(permco, datadate, beta_minus,
+         beta_plus, nobs)
+
+cutoff <- 75
+
+reg_data <-
+  risk_asymmetry |>
+  left_join(float_data_linked, by = "permco") |>
+  left_join(firm_years, by = c("datadate", "gvkey")) |>
+  mutate(treat = coalesce(float2002 >= cutoff, TRUE),
+         post = datadate >= "2005-11-01",
+         year = year(datadate)) |>
+  collect() |>
+  mutate(across(starts_with("beta"), winsorize)) |>
+  mutate(risk_asymm = beta_minus - beta_plus)
 ```
 
 ## Discussion questions
