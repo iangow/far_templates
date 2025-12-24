@@ -414,6 +414,36 @@ test_results |>
 ```
 
 ```{r}
+#| include: false
+df_test <- 
+  merged_sample_1 |>
+  filter(gvkey == "001304")
+
+df_mod <- 
+  df_test |>
+  calc_accruals() |>
+  mutate(acc_at = acc_raw / lag_at,
+         one_at = 1 / lag_at,
+         d_rev_at = d_rev / lag_at,
+         d_rev_alt_at = (d_rev - d_rec) / lag_at,
+         ppe_at = ppegt / lag_at) |>
+  ungroup()
+
+fm1a <- lm(acc_at ~ one_at + d_rev_at + ppe_at, 
+          data = df_mod, subset = !part)
+
+res1 <-
+  df_mod |>
+  mutate(nda_jones = predict(fm1a, newdata = pick(everything()))) |>
+  select(fyear, part, acc_at, nda_jones) |>
+  mutate(da_jones = acc_at - nda_jones)
+
+fm2a <- lm(da_jones ~ part, data = res1)
+fm2 <- lm(acc_at ~ one_at + d_rev_at + ppe_at + part, 
+          data = df_mod)
+```
+
+```{r}
 #| label: earn_deciles
 #| cache: true
 #| include: false
@@ -493,7 +523,7 @@ Or do you expect that these differences have another cause?
 Does it make sense to interpret each of the columns independent of the others?
 
 7. Confirm that the coefficient on $\textit{PART}$ from the regression in `fm2a` can be recovered from the regression in `fm2`.
-  Are the standard errors the same?
+Are the standard errors the same?
 
 8. Modify the code above to check that the same holds for the Modified Jones Model.
 
