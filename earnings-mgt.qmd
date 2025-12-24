@@ -8,14 +8,12 @@ bibliography: book.bib
 ```{r}
 #| message: false
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
+library(tidyverse)
 library(DBI)
-library(tidyr)
-library(broom)   # For tidy()
-library(purrr)   # For map(), map2() and map_dfr()
 library(ggplot2)
 library(farr)
-library(knitr)
+library(broom)       # tidy()
+library(furrr)       # future_map(), future_map2(), future_map_lgl()
 ```
 
 ## Measuring earnings management
@@ -41,9 +39,10 @@ Is this a good statement of the main research question of @McNichols:1988vq?
 If not, suggest an alternative summary of the research questions of @McNichols:1988vq.
 
 5. What do @McNichols:1988vq mean by "nondiscretionary accruals"?
-How "[operationalizable](https://en.wiktionary.org/wiki/operationalizable#English)" is this concept?
+How "operationalizable" is this concept?^[See <https://en.wiktionary.org/wiki/operationalizable#English>.]
 
 6. @McNichols:1988vq say "if $\mathit{DA}$ were observable, accrual-based tests of earnings management would be expressed in terms of the following regression:
+
 $$ \mathit{DA} = \alpha + \beta \textit{PART} + \epsilon $$
 where $\textit{PART}$ is a dummy variable that partitions the data into two groups for which earnings management predictions are specified".
 @Healy:1985jg points out that bonus plans can give managers incentives to increase earnings or decrease earnings depending on the situation.
@@ -88,10 +87,11 @@ acc_data_raw <-
   filter(!is.na(at),
          pddur == 12,
          !between(sic, 6000, 6999)) |>
-  mutate(across(c(che, dlc, sale, rect), ~ coalesce(., 0))) |>
+  mutate(across(c(che, dlc, sale, rect), \(x) coalesce(x, 0))) |>
   select(gvkey, datadate, fyear, at, ib, dp, rect, ppegt, ni, sale,
          act, che, lct, dlc, sic) |>
   filter(between(fyear, 1950, 1991)) |>
+  arrange(gvkey, fyear) |>
   collect()
 
 dbDisconnect(db)
@@ -132,33 +132,46 @@ test_sample <-
   group_by(gvkey) |>
   filter(n() >= 11) |>
   ungroup() |>
+  arrange(gvkey, fyear) |>
   select(gvkey, fyear)
 ```
 
 ```{r}
-#| label: merged_sample
-#| eval: true 
-#| include: false 
+#| label: sample_1_firm_years
 #| cache: true
-#| dependson: sample_year
+#| dependson: test_sample
+#| include: false
 set.seed(2022)
 
 sample_1_firm_years <- 
   test_sample |>
   mutate(rand = rnorm(n = nrow(pick(everything())))) |>
   group_by(gvkey) |>
-  filter(rand == min(rand), fyear > min(fyear)) |>
+  filter(rand == min(rand), 
+         fyear > min(fyear)) |>
   ungroup() |>
   top_n(1000, wt = rand) |>
   select(gvkey, fyear) |>
   mutate(part = TRUE)
+```
 
+```{r}
+#| label: sample_1
+#| dependson: sample_1_firm_years, test_sample
+#| cache: true
+#| include: false
 sample_1 <-
   test_sample |>
   semi_join(sample_1_firm_years, by = "gvkey") |>
   left_join(sample_1_firm_years, by = c("gvkey", "fyear")) |>
   mutate(part = coalesce(part, FALSE))
+```
 
+```{r}
+#| label: merged_sample
+#| cache: true
+#| dependson: sample_1, acc_data_raw
+#| include: false
 merged_sample_1 <-
   sample_1 |>
   inner_join(acc_data_raw, by = c("gvkey", "fyear"))
@@ -166,21 +179,39 @@ merged_sample_1 <-
 
 ```{r}
 #| label: get_nda
-#| eval: true 
-#| include: false 
 #| cache: true
 #| warning: false
+#| include: false
+fit_jones <- function(df) {
+  fm <- lm(acc_at ~ one_at + d_rev_at + ppe_at - 1, 
+           data = df, model = FALSE, subset = !part)
+  
+  df |> 
+    mutate(nda_jones = predict(fm, newdata = df),
+           da_jones = acc_at - nda_jones) |>
+    select(fyear, nda_jones, da_jones)
+}
+  
+fit_mod_jones <- function(df) {
+  fm <- lm(acc_at ~ one_at + d_rev_alt_at + ppe_at - 1, 
+           data = df, model = FALSE, subset = !part)
+  df |> 
+    mutate(nda_mod_jones = predict(fm, newdata = df),
+           da_mod_jones = acc_at - nda_mod_jones) |>
+    select(fyear, nda_mod_jones, da_mod_jones)
+} 
+
 get_nda <- function(df) {
   
   df_mod <- 
     df |>
     calc_accruals() |>
-    mutate(sic2 = substr(as.character(sic), 1, 2),
-           acc_at = acc_raw/lag_at,
-           one_at = 1/lag_at,
-           d_rev_at = d_rev/lag_at,
-           d_rev_alt_at = (d_rev - d_rec)/lag_at,
-           ppe_at = ppegt/lag_at) |>
+    mutate(sic2 = str_sub(as.character(sic), 1, 2),
+           acc_at = acc_raw / lag_at,
+           one_at = 1 / lag_at,
+           d_rev_at = d_rev / lag_at,
+           d_rev_alt_at = (d_rev - d_rec) / lag_at,
+           ppe_at = ppegt / lag_at) |>
     group_by(sic2) |>
     mutate(acc_ind = median(if_else(part, NA, acc_at), na.rm = TRUE)) |>
     ungroup()
@@ -197,29 +228,10 @@ get_nda <- function(df) {
     select(gvkey, fyear, part, nda_healy, da_healy, nda_deangelo,
            da_deangelo)
 
-  fit_jones <- function(df) {
-    fm <- lm(acc_at ~ one_at + d_rev_at + ppe_at - 1, 
-             data = df, model = FALSE, subset = !part)
-    
-    df |> 
-      mutate(nda_jones = predict(fm, newdata = df),
-             da_jones = acc_at - nda_jones) |>
-      select(fyear, nda_jones, da_jones)
-  }
-
   df_jones <-
     df_mod |>
     nest_by(gvkey) |>
-    reframe(fit_jones(data)) 
-    
-  fit_mod_jones <- function(df) {
-    fm <- lm(acc_at ~ one_at + d_rev_alt_at + ppe_at - 1, 
-             data = df, model = FALSE, subset = !part)
-    df |> 
-      mutate(nda_mod_jones = predict(fm, newdata = df),
-             da_mod_jones = acc_at - nda_mod_jones) |>
-      select(fyear, nda_mod_jones, da_mod_jones)
-  }         
+    reframe(fit_jones(data))
 
   df_mod_jones <-
     df_mod |>
@@ -249,61 +261,64 @@ get_nda <- function(df) {
 
 ```{r}
 #| label: reg_data
-#| eval: true 
-#| include: false 
 #| cache: true
 #| dependson: get_nda, merged_sample
 #| warning: false
+#| include: false
 reg_data <- get_nda(merged_sample_1)
 ```
 
-### Results under the null hypothesis: Random firms
-
 ```{r}
-#| label: multi_fit
-#| eval: true 
-#| include: false 
+#| label: fit_model
 #| cache: true
+#| include: false
 fit_model <- function(df, measure = "healy") {
   df |>
     nest_by(gvkey) |> 
-    summarize(model = list(lm(as.formula(paste0("da_", measure, " ~ part")),
+    summarize(model = list(lm(as.formula(str_c("da_", measure, " ~ part")),
                               model = FALSE, data = data)), 
               .groups = "drop") |>
     mutate(measure = !!measure)
 }
+```
 
+```{r}
+#| label: multi_fit
+#| cache: true
+#| dependson: fit_model
+#| include: false
 multi_fit <- function(df) {
   models <- c("healy", "deangelo", "jones", "mod_jones", "industry")
-  bind_rows(lapply(models, function(x) fit_model(df, x)))
+  models |>
+    map(\(x) fit_model(df, x)) |>
+    list_rbind()
 }
 ```
 
 ```{r}
 #| label: results
-#| eval: true 
-#| include: false 
 #| cache: true
 #| dependson: reg_data, multi_fit
+#| include: false
 results <- multi_fit(reg_data)
 ```
 
 ```{r}
-#| label: tbl-table-1
-#| eval: true 
-#| include: true
-#| echo: false
+#| label: get_stats
 #| cache: true
-#| dependson: results
-#| results: asis
-#| tbl-cap: "Results of tests of earning management: Sample 1"
+#| include: false
 get_stats <- function(fm) {
   fm |>
     tidy() |>
     filter(term == "partTRUE") |> 
     select(-term)
 }
+```
 
+```{r}
+#| label: table_1_stats
+#| include: false
+#| cache: true
 table_1_stats <- function(x) {
   tibble(mean = mean(x, na.rm = TRUE),
          sd = sd(x, na.rm = TRUE),
@@ -311,23 +326,30 @@ table_1_stats <- function(x) {
          median = median(x, na.rm = TRUE),
          q3 = quantile(x, p = 0.75, na.rm = TRUE))
 }
+```
 
+```{r}
+#| label: tbl-em-1
+#| eval: true 
+#| include: true
+#| echo: false
+#| cache: true
+#| dependson: get_stats, results, table_1_stats
+#| results: asis
+#| tbl-cap: "Results of tests of earning management: Sample 1"
 results |>
   mutate(stats = map(model, get_stats)) |> 
   unnest_wider(stats) |> 
   pivot_longer(estimate:statistic, names_to = "stat") |>
   group_by(measure, stat) |>
   summarize(table_1_stats(value), .groups = "drop") |>
-  kable(digits = 3)
+  knitr::kable(digits = 4)
 ```
 
 ```{r}
-#| eval: true 
-#| echo: false
-#| include: false
+#| label: h_test
 #| cache: true
-#| dependson: results
-#| label: h-test
+#| include: false
 h_test <- function(fm) {
   coefs <- coef(summary(fm))
       
@@ -343,7 +365,12 @@ h_test <- function(fm) {
     tibble(neg_p01 = NA, neg_p05 = NA, pos_p01 = NA, pos_p05 = NA)
   }
 }
+```
 
+```{r}
+#| label: test_results
+#| cache: false
+#| dependson: results, h_test
 test_results <-
   results |> 
   mutate(map_dfr(model, h_test)) 
@@ -353,61 +380,60 @@ test_results <-
 #| eval: true 
 #| echo: false
 #| include: true
-#| cache: true
-#| dependson: results, h-test
+#| cache: false
+#| dependson: test_results
 #| output: asis
-#| label: tbl-table-2
-#| tbl-cap: "Type I error rates"
+#| label: tbl-em-2
+#| tbl-cap: Type I error rates
 test_results |>
   group_by(measure) |>
-  summarize(across(matches("p0"), ~ mean(., na.rm = TRUE))) |>
-  kable(digits = 3)
+  summarize(across(matches("p0"),
+                   \(x) mean(x, na.rm = TRUE))) |>
+  knitr::kable(digits = 4)
 ```   
 
 ```{r}
-#| eval: true 
-#| include: true
-binom.test(x = 10, n = 1000, p = 0.05)$p.value
-binom.test(x = 90, n = 1000, p = 0.05)$p.value
-```
-
-```{r}
-#| label: tbl-table-2-sig
-#| eval: true 
-#| include: true
-#| echo: false
-#| output: asis
-#| tbl-cap: "p-values for null that Type I error rates equal size of tests"
+#| label: binom_test
+#| cache: true
 binom_test <- function(x, p) {
   x <- x[!is.na(x)]
   binom.test(sum(x), length(x), p = p)$p.value
 }  
+```
 
+```{r}
+#| label: tbl-em-2-sig
+#| echo: false
+#| tbl-cap: "p-values for null that Type I error rates equal size of tests"
 test_results |>
   group_by(measure) |>
   summarize(neg_p01 = binom_test(neg_p01, p = 0.01),
             neg_p05 = binom_test(neg_p05, p = 0.05),
             pos_p01 = binom_test(pos_p01, p = 0.01),
             pos_p05 = binom_test(pos_p05, p = 0.05)) |>
-  kable(digits = 3)
+  knitr::kable(digits = 4)
 ```
 
-### Results under the null hypothesis: Extreme performance
-
-```{r} 
-#| label: sample_2
-#| eval: true 
-#| include: false 
+```{r}
+#| label: earn_deciles
+#| cache: true
+#| include: false
 earn_deciles <- 
   acc_data_raw |> 
   semi_join(test_sample, by = c("gvkey", "fyear")) |>
   group_by(gvkey) |>
   arrange(fyear) |>
-  mutate(earn = ib/lag(at)) |> 
+  mutate(earn = ib / lag(at)) |> 
   ungroup() |> 
-  mutate(earn_dec = form_deciles(earn)) |>
+  mutate(earn_dec = ntile(earn, 10)) |>
   select(gvkey, fyear, earn_dec)
+```
 
+```{r}
+#| label: sample_2_firm_years
+#| cache: true
+#| include: false
+#| dependson: earn_deciles
 sample_2_firm_years <- 
   earn_deciles |>
   filter(earn_dec == 10) |>
@@ -419,13 +445,25 @@ sample_2_firm_years <-
   top_n(1000, wt = rand) |>
   select(gvkey, fyear) |>
   mutate(part = TRUE)
+```
 
+```{r}
+#| label: sample_2
+#| include: false
+#| cache: true
+#| dependson: test_sample, sample_2_firm_years
 sample_2 <-
   test_sample |>
   semi_join(sample_2_firm_years, by = "gvkey") |>
   left_join(sample_2_firm_years, by = c("gvkey", "fyear")) |>
   mutate(part = coalesce(part, FALSE))
+```
 
+```{r}
+#| label: merged_sample_2
+#| include: false
+#| cache: true
+#| dependson: sample_2, acc_data_raw
 merged_sample_2 <-
   sample_2 |>
   inner_join(acc_data_raw, by = c("gvkey", "fyear"))
@@ -435,7 +473,7 @@ merged_sample_2 <-
 
 1. What interpretation do @Dechow:1995wr provide for their Table 1 results?
 
-2. Compare the results in @tbl-table-1 with those in Table 1 of @Dechow:1995wr.
+2. Compare the results in @tbl-em-1 with those in Table 1 of @Dechow:1995wr.
 What differences appear to be significant?
 
 3. Compare the values in the standard deviation column of Table 1 of @Dechow:1995wr with other statistics.
@@ -445,53 +483,52 @@ Or do they suggest anomalies in the underlying data?
 4. Compare the values in the standard deviation column of the "earnings management" rows of Table 1 of @Dechow:1995wr with the values in the mean column of the standard error rows.
 What is the relationship between these values?
 What would you expect the relationship between these values to be?
-Do you observe similar relations in @tbl-table-1 above?
+Do you observe similar relations in @tbl-em-1?
 
-5. Focusing on the Healy Model, DeAngelo Model and the Industry Model, compare the rejection rates in @tbl-table-2 with those presented in Table 2 of @Dechow:1995wr and those produced above.
+5. Focusing on the Healy Model, DeAngelo Model, and the Industry Model, compare the rejection rates in @tbl-em-2 with those presented in Table 2 of @Dechow:1995wr.
 What might explain any differences?
-Could these be attributed to differences between our results and those reported in Table 1 of @Dechow:1995wr?
+Could these be attributed to differences between our results in @tbl-em-1 and those reported in Table 1 of @Dechow:1995wr?
 Or do you expect that these differences have another cause?
 
-6. How do you interpret the results of our `binom_test` reported in @tbl-table-2-sig above?
-Does it make sense to interpret each of the columns independently of the others?
+6. How do you interpret the results from `binom_test()` reported in @tbl-em-2-sig?
+Does it make sense to interpret each of the columns independent of the others?
 
 7. Confirm that the coefficient on $\textit{PART}$ from the regression in `fm2a` can be recovered from the regression in `fm2`.
-  How do the standard errors differ across the two regressions?
+  Are the standard errors the same?
 
-8. Modify the code above to check that the same is true for the Modified Jones Model.
+8. Modify the code above to check that the same holds for the Modified Jones Model.
 
 9. We described the Jones Model above as "a (differently) modified Jones Model".
-In what way is the model different from the Jones Model estimated in the `fit_jones` function above?
-Does the @Salkever:1976ue equivalence hold if we use the Jones Model from the `fit_jones` function?
+In what way is the model different from the Jones Model estimated in `fit_jones()` above?
+Does the @Salkever:1976ue equivalence hold if we use the Jones Model from `fit_jones()`?
 If so, why?
 If not, how might this affect how you would use the Jones Model and the @Salkever:1976ue approach?
-(For example, do we expect the the "(differently) modified Jones Model" to produce materially different results from the Jones Model?)
+(For example, do we expect the "(differently) modified Jones Model" to produce materially different results from the Jones Model?)
 
 10. Do the issues related to a first and second stage apply to either the Healy Model or the DeAngelo Model or both?
 If so, could we apply the @Salkever:1976ue approach to address these issues?
 If not, are there "one-stage" equivalents to the Healy Model and DeAngelo Model approaches as implemented above?
 
-11. Produce the equivalent of Table 3 from @Dechow:1995wr by adapting the code used above to create `merged_sample_2` and the version of Table 2 above.
+11. Produce an equivalent of Table 3 from @Dechow:1995wr by adapting the code used above to create `merged_sample_2` and @tbl-em-2.
 (*Challenge version*: Implement the approach of @Salkever:1976ue in doing so.)
 
-12. Produce the equivalent of Table 4 from @Dechow:1995wr by adapting the code used above to create `merged_sample_2` and the version of Table 2 above.
+12. Produce an equivalent of Table 4 from @Dechow:1995wr by adapting the code used above to create `merged_sample_2` and @tbl-em-2.
 
 ## Power of tests of earnings management
 
-```{r }
+```{r}
 #| label: manipulate
 #| cache: true
-#| eval: false 
 #| include: false
 manipulate <- function(df, level = 0, type) {
   df <-
     df |>
     group_by(gvkey) |>
     arrange(datadate) |>
-    mutate(ni_ratio = median(if_else(part, NA, ni/sale), na.rm = TRUE),
+    mutate(ni_ratio = median(if_else(part, NA, ni / sale), na.rm = TRUE),
            lag_at = lag(at),
            manip_amt = lag_at * level,
-           manip_amt_gross = manip_amt/ni_ratio)
+           manip_amt_gross = manip_amt / ni_ratio)
             
   if (type == "expense") {
     df |> 
@@ -501,7 +538,7 @@ manipulate <- function(df, level = 0, type) {
     df |> 
       mutate(sale = case_when(part ~ sale + manip_amt, 
                               lag(part) ~ sale - manip_amt,
-                              TRUE ~ sale),
+                              .default = sale),
              rect = if_else(part, rect + manip_amt, rect),
              act = if_else(part, act + manip_amt, act)) |>
       ungroup()
@@ -511,7 +548,7 @@ manipulate <- function(df, level = 0, type) {
                                 sale + manip_amt_gross,
                               lag(part) & ni_ratio > 0 ~ 
                                 sale - manip_amt_gross,
-                              TRUE ~ sale),
+                              .default = sale),
              rect = if_else(part & ni_ratio > 0, 
                             rect + manip_amt_gross, rect),
              act = if_else(part & ni_ratio > 0, 
@@ -528,83 +565,32 @@ manipulate <- function(df, level = 0, type) {
 
 ```{r}
 #| label: manip_df
-#| eval: false
+#| eval: true
 #| include: false
 #| cache: true
-#| dependson: manipulate, merged_sample, get_nda, multi_fit
-manip_df <-
-  expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) |>
-  mutate(data = map2(level, manip_type, 
-                     ~ manipulate(merged_sample_1, .x, .y))) |>
-  mutate(accruals = map(data, get_nda)) |>
-  mutate(results = map(accruals, ~ multi_fit(.x))) |>
-  select(-data, -accruals)  
-```
-
-```{r}
-#| eval: false 
-#| include: false
-#| cache: true
-manip_fit <- function(df, level, manip_type) {
-  multi_fit(get_nda(manipulate(df, level, manip_type)))
-}
-```
-
-```{r}
-#| eval: false
-#| include: false
-manip_df <-
-  expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) |>
-  mutate(results = map2(level, manip_type,
-                        ~ manip_fit(merged_sample_1, .x, .y))) 
-```
-
-```{r}
-#| label: manip_df_mc
-#| eval: false 
-#| include: false
-#| cache: true
-#| dependson: manipulate, merged_sample, get_nda, multi_fit
-library(furrr)
-future::plan(multisession, workers = 8)
+#| dependson: merged_sample_1, get_nda, multi_fit, manipulate
+plan(multisession)
 
 manip_df <-
   expand_grid(level = seq(from = 0, to = 1, by = 0.1),
               manip_type = c("expense", "revenue", "margin")) |>
-  mutate(results = future_map2(level, manip_type,
-                               ~ manip_fit(merged_sample_1, .x, .y)))
-```
-
-```{r}
-#| eval: false
-#| include: false
-#| cache: true
-#| dependson: manipulate, merged_sample, get_nda, multi_fit
-library(furrr)
-future::plan(multisession, workers = 8)
-
-manip_df <-
-  expand_grid(level = seq(from = 0, to = 1, by = 0.1),
-              manip_type = c("expense", "revenue", "margin")) |>
-  mutate(data = future_map2(level, manip_type,
-                            ~ manipulate(merged_sample_1, .x, .y))) |>
+  mutate(data = future_map2(level, manip_type, 
+                            \(x, y) manipulate(merged_sample_1, x, y))) |>
   mutate(accruals = future_map(data, get_nda)) |>
-  mutate(results = future_map(accruals, ~ multi_fit(.x))) |>
-  select(-data, -accruals)
+  mutate(results = future_map(accruals, multi_fit)) |>
+  select(-data, -accruals) |>
+  system_time()
 ```
 
 ```{r}
 #| label: h-test-5
-#| eval: false
-#| include: false
 #| cache: true
+#| include: false
 h_test_5 <- function(fm) {
   coefs <- coef(summary(fm))
       
-  if (dim(coefs)[1]==2) { 
-    t_stat <- coefs[2 ,3]
+  if (dim(coefs)[1] == 2) { 
+    t_stat <- coefs[2, 3]
     df <- fm$df.residual
     pt(t_stat, df, lower = FALSE) < 0.05
   } else {
@@ -614,43 +600,36 @@ h_test_5 <- function(fm) {
 ```
 
 ```{r}
-#| cache: true
-#| eval: false
-#| include: false
-#| dependson: manip_df, h-test-5
-#| label: power-plot-data
-power_plot_data <-
-  manip_df |> 
-  unnest(results) |> 
-  group_by(level, manip_type, measure) |> 
-  mutate(reject_null = map_lgl(model, h_test_5)) |>
-  summarize(prop_reject = mean(reject_null, na.rm = TRUE),
-            .groups = "drop")
-```
-
-```{r}
-#| cache: true
-#| dependson: manip_df_mc, h-test-5
 #| label: power-plot-data-mc
+#| cache: true
 #| eval: false
+#| dependson: manip_df, h_test_5
 #| include: false
-library(furrr)
-future::plan(multisession, workers = 8)
-
+# Given the time to run this code, I have set `eval: false` in the chunk options here 
+# so this code doesn't run automatically. 
+# Change it to `eval: true` to run this code.
 power_plot_data <-
-  manip_df |> 
-  unnest(results) |> 
-  group_by(level, manip_type, measure) |> 
-  mutate(reject_null = future_map_lgl(model, h_test_5)) |>
-  summarize(prop_reject = mean(reject_null, na.rm = TRUE),
-            .groups = "drop")
+  manip_df |>
+  mutate(results = map(results, 
+                       \(d) mutate(d, rej_null = map_lgl(model, h_test_5)))) |>
+  unnest(results) |>
+  select(-model) |>
+  group_by(level, manip_type, measure) |>
+  summarise(prop_reject = mean(rej_null, na.rm = TRUE), .groups = "drop") |>
+  system_time()
 ```
 
 ```{r}
+#| label: fig-power
+#| echo: false
 #| eval: false
-#| include: false
-#| label: power
-#| fig.cap: Power functions for tests of earnings management
+#| fig-cap: Power functions for tests of earnings management
+#| fig-height: 5
+#| fig-alt: "Power of five different models to detect earnings management of three different forms (expense, margin, revenue). As expected, power increases with the magnitude of earnings management. But power is generally well under 50% for earnings management less than 10% of assets."
+# Given the time to run this code, I have set `eval: false` in the chunk options here 
+# so this code doesn't run automatically. 
+# Change it to `eval: true` in this and the previous chunk to 
+# run this code.
 power_plot_data |>
   ggplot(aes(x = level, y = prop_reject)) +
   geom_line() +
@@ -659,10 +638,10 @@ power_plot_data |>
 
 ### Discussion questions
 
-1. How do the results in shown [in the book](https://iangow.github.io/far_book/earnings-mgt.html#power-of-tests-of-earnings-management) compare with those in Figure 4 of @Dechow:1995wr?
+1. How do the results in Figure 16.1 compare with those in Figure 4 of @Dechow:1995wr?
 
 2. According to the [SEC's filing](https://www.sec.gov/litigation/admin/3439329.txt) referenced above related to B&L, "B&L recognized, in contravention of GAAP and the Company's own revenue recognition policies, \$42.1 million of revenue, resulting in at least a \$17.6 million, or 11%, overstatement of the net income originally reported for its 1993 fiscal year."
-According to [a subsequent SEC filing](https://www.sec.gov/Archives/edgar/data/10427/0000010427-95-000006.txt), B&L's total assets for 1994 were \$2,457,731,000 (it seems reasonable to assume that the 1993 value was not radically different from this).
+According to [a subsequent SEC filing,](https://www.sec.gov/Archives/edgar/data/10427/0000010427-95-000006.txt) B&L's total assets for 1994 were \$2,457,731,000 (it seems reasonable to assume that the 1993 value was not radically different from this).
 Based on this information (plus any information in the SEC's filing), which of @Dechow:1995wr's three categories did B&L's earnings management fall into?
 What is the approximate magnitude relative to the $x$-axes of the plots in Figure 4 of @Dechow:1995wr (or the equivalent above)?
 Based on these data points, what is the approximate estimated probability of the various models detecting earnings management of this magnitude?
@@ -672,7 +651,7 @@ Are these implications consistent with the extensive literature on earnings mana
 If so, explain why.
 If not, how would you reconcile the inconsistencies?
 
-4. Does each of the three forms of earnings management implemented in the `manipulate` function above agree precisely with the corresponding description in @Dechow:1995wr [pp. 201--202]?
+4. Does each of the three forms of earnings management implemented in `manipulate()` above agree precisely with the corresponding description in @Dechow:1995wr [pp. 201--202]?
 If not, does one approach seem more correct than the other?
 (Note that *one* issue arises with negative or zero net income ratio.
-How are such cases handled by @Dechow:1995wr and by the `manipulate` function?)
+How are such cases handled by @Dechow:1995wr and by `manipulate()`?)
