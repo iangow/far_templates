@@ -151,7 +151,7 @@ get_data <- function(add_perc = 0.03, n_years = 20) {
       df$ni[i] <- df$sales[i] - df$cogs[i] - df$bde[i]
       df$div[i] <- df$ni[i] * div_payout
       df$cash[i] <- df$cash[i-1] + df$collect[i] - df$cogs[i] - df$div[i] 
-      df$se[i] <- df$se[i-1] + df$ni[i] - df$ni[i]
+      df$se[i] <- df$se[i-1] + df$ni[i] - df$div[i]
     }
     
     df
