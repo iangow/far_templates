@@ -351,24 +351,24 @@ results |>
 #| include: false
 h_test <- function(fm) {
   coefs <- coef(summary(fm))
-      
-  if (dim(coefs)[1]==2) { 
-    t_stat <- coefs[2 ,3]
-    df <- fm$df.residual
     
-    tibble(neg_p01 = pt(t_stat, df, lower = TRUE) < 0.01,
-           neg_p05 = pt(t_stat, df, lower = TRUE) < 0.05,
-           pos_p01 = pt(t_stat, df, lower = FALSE) < 0.01,
-           pos_p05 = pt(t_stat, df, lower = FALSE) < 0.05)
+  if ("partTRUE" %in% rownames(coefs)) {
+    t_stat <- coefs["partTRUE", "t value"]
+    df <- fm$df.residual
+      
+    return(tibble(neg_p01 = pt(t_stat, df, lower = TRUE) < 0.01,
+                  neg_p05 = pt(t_stat, df, lower = TRUE) < 0.05,
+                  pos_p01 = pt(t_stat, df, lower = FALSE) < 0.01,
+                  pos_p05 = pt(t_stat, df, lower = FALSE) < 0.05))
   } else {
-    tibble(neg_p01 = NA, neg_p05 = NA, pos_p01 = NA, pos_p05 = NA)
+    return(tibble(neg_p01 = NA, neg_p05 = NA, pos_p01 = NA, pos_p05 = NA))
   }
 }
 ```
 
 ```{r}
 #| label: test_results
-#| cache: false
+#| cache: true
 #| dependson: results, h_test
 test_results <-
   results |> 
@@ -498,6 +498,55 @@ merged_sample_2 <-
   inner_join(acc_data_raw, by = c("gvkey", "fyear"))
 ```
 
+```{r}
+#| include: false
+one_gvkey <-
+  merged_sample_1 |> 
+  group_by(gvkey) |> 
+  count() |> 
+  filter(n == 20) |> 
+  ungroup() |> 
+  select(gvkey) |>
+  pull() %>%
+  .[1]
+
+code_em <- str_c('df_test <- 
+  merged_sample_1 |>
+  filter(gvkey == "', one_gvkey, '")')
+```
+
+```{r}
+#| code: !expr code_em
+#| include: true
+```
+
+```{r}
+#| include: false
+df_mod <- 
+  df_test |>
+  calc_accruals() |>
+  mutate(acc_at = acc_raw / lag_at,
+         one_at = 1 / lag_at,
+         d_rev_at = d_rev / lag_at,
+         d_rev_alt_at = (d_rev - d_rec) / lag_at,
+         ppe_at = ppegt / lag_at) |>
+  ungroup()
+
+fm1a <- lm(acc_at ~ one_at + d_rev_at + ppe_at, 
+          data = df_mod, subset = !part)
+
+res1 <-
+  df_mod |>
+  mutate(nda_jones = predict(fm1a, newdata = pick(everything()))) |>
+  select(fyear, part, acc_at, nda_jones) |>
+  mutate(da_jones = acc_at - nda_jones)
+
+fm2a <- lm(da_jones ~ part, data = res1)
+
+fm2 <- lm(acc_at ~ one_at + d_rev_at + ppe_at + part, 
+          data = df_mod)
+```
+
 ### Discussion questions and exercises
 
 1. What interpretation do @Dechow:1995wr provide for their Table 1 results?
@@ -612,19 +661,19 @@ manip_df <-
 ```
 
 ```{r}
-#| label: h-test-5
+#| label: h_test_5
 #| cache: true
 #| include: false
 h_test_5 <- function(fm) {
   coefs <- coef(summary(fm))
-      
-  if (dim(coefs)[1] == 2) { 
-    t_stat <- coefs[2, 3]
+    
+  if ("partTRUE" %in% rownames(coefs)) {
+    t_stat <- coefs["partTRUE", "t value"]
     df <- fm$df.residual
-    pt(t_stat, df, lower = FALSE) < 0.05
+    return(pt(t_stat, df, lower = FALSE) < 0.05)
   } else {
-    NA
-  }
+    return(NA)
+  }  
 }
 ```
 
