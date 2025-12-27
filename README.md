@@ -9,7 +9,7 @@ See instructions [here](https://iangow.github.io/far_book/intro.html#install) fo
 To download a template, simply "right click" a link below and save the template on your computer, then open it on your computer.
 
 For each template provided below, we have prepared suggested solutions (as both executable Quarto files and the PDFs these produce).
-Instructors can contact [Ian Gow](mailto:ian.gow@unimelb.edu.au) for these solutions.
+Instructors can contact [Ian Gow](mailto:iandgow@gmail.com) for these solutions.
 
 ## Templates
 
