@@ -370,6 +370,7 @@ h_test <- function(fm) {
 #| label: test_results
 #| cache: true
 #| dependson: results, h_test
+#| include: false
 test_results <-
   results |> 
   mutate(map_dfr(model, h_test)) 
@@ -394,6 +395,7 @@ test_results |>
 ```{r}
 #| label: binom_test
 #| cache: true
+#| include: false
 binom_test <- function(x, p) {
   x <- x[!is.na(x)]
   binom.test(sum(x), length(x), p = p)$p.value
