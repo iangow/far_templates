@@ -8,17 +8,13 @@ bibliography: book.bib
 ```{r}
 #| label: libraries
 #| include: false
+library(tidyverse)
+library(DBI)
+library(farr)
 library(fixest)
 library(modelsummary)
-library(dplyr, warn.conflicts = FALSE)
-library(lubridate)   # For year() and month()
-library(tidyr)       # unnest(), expand_grid(), pivot_longer() & separate()
-library(broom)       # For tidy()
-library(stringr)     # For str_detect() and str_match()
-library(DBI)
-library(ggplot2)
-library(farr)
-library(purrr)
+library(furrr)        # future_map(), future_pmap()
+library(broom)        # tidy()
 ```
 
 ## A replication crisis? {#sec-rep-crisis}
@@ -88,19 +84,17 @@ Do you agree that the REP shuts down this channel?
 ### The SHO pilot sample {#sec-sho-pilot}
 
 ```{r}
+#| label: get_data
 #| include: false
-pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-rs <- dbExecute(pg, "SET search_path TO crsp")
+#| cache: true
+db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-mse <- tbl(pg, "mse")
-msf <- tbl(pg, "msf")
-stocknames <- tbl(pg, "stocknames")
-dseexchdates <- tbl(pg, "dseexchdates")
-ccmxpf_lnkhist <- tbl(pg, "ccmxpf_lnkhist")
-```
+mse <- tbl(db, Id(schema = "crsp", table = "mse"))
+msf <- tbl(db, Id(schema = "crsp", table = "msf"))
+stocknames <- tbl(db, Id(schema = "crsp", table = "stocknames"))
+dseexchdates <- tbl(db, Id(schema = "crsp", table = "dseexchdates"))
+ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
 
-```{r}
-#| include: false
 ccm_link <-
   ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
@@ -115,10 +109,7 @@ gvkeys <-
          test_date <= linkenddt | is.na(linkenddt)) |>
   select(gvkey, permno) |>
   collect()
-```
 
-```{r}
-#| include: false
 crsp_sample <-
   stocknames |>
   mutate(test_date = as.Date("2004-06-25")) |>
@@ -126,13 +117,16 @@ crsp_sample <-
   select(permno, permco, ticker, shrcls) |>
   distinct() |>
   collect()
+
+dbDisconnect(db)
 ```
 
 ```{r}
+#| label: sho_data
 #| include: false
 #| cache: true
 sho_data <- 
-  fhk_pilot |>
+  farr::fhk_pilot |>
   select(gvkey, pilot) |>
   distinct() |>
   group_by(gvkey) |>
@@ -226,24 +220,25 @@ What challenges would such a process face?
 ## Indirect effects of Reg SHO {#sec-sho-indirect}
 
 ```{r}
-#| label: pg_data
+#| label: db_data
 #| cache: true
 #| include: false
-pg <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
 
-funda <- tbl(pg, Id(schema = "comp", table = "funda"))
+funda <- tbl(db, Id(schema = "comp", table = "funda"))
 
 compustat_annual <-
   funda |>
   filter(indfmt == 'INDL', datafmt == 'STD', popsrc == 'D', consol == 'C', 
          between(fyear, 1999, 2012),
          !(between(sich, 6000, 6999) | between(sich, 4900, 4949))) |>
-  select(gvkey, fyear, datadate, fyr, sich, dltt, dlc, seq, oibdp,
-         ib, ibc, oancf, xidoc, at, ppegt, sale, rect, ceq, csho, prcc_f) |>
+  select(gvkey, fyear, datadate, fyr, sich, dltt, dlc, seq,
+         oibdp, ib, ibc, oancf, xidoc, at, ppegt, sale, 
+         rect, ceq, csho, prcc_f) |>
   mutate(fyear = as.integer(fyear)) |>
   collect()
 
-rs <- dbDisconnect(pg)
+dbDisconnect(db)
 
 controls_raw <-
   compustat_annual |>
@@ -251,10 +246,10 @@ controls_raw <-
   arrange(fyear) |>
   mutate(lag_fyear = lag(fyear),
          mtob = if_else(lag(ceq) != 0, 
-                        lag(csho) * lag(prcc_f)/lag(ceq), NA_real_),
+                        lag(csho) * lag(prcc_f) / lag(ceq), NA),
          leverage = if_else(dltt + dlc + seq != 0, 
-                            (dltt + dlc) / (dltt + dlc + seq), NA_real_),
-         roa = if_else(lag(at) > 0, oibdp/lag(at), NA_real_)) |>
+                            (dltt + dlc) / (dltt + dlc + seq), NA),
+         roa = if_else(lag(at) > 0, oibdp / lag(at), NA)) |>
   filter(fyear == lag(fyear) + 1) |>
   ungroup() |>
   select(gvkey, datadate, fyear, at, mtob, leverage, roa)
@@ -269,8 +264,8 @@ controls_filled <-
 controls_fyear_avg <-
   controls_filled |>
   group_by(fyear) |>
-  summarize_at(vars(at, mtob, leverage, roa), 
-               \(x) mean(x, na.rm = TRUE))
+  summarize(across(c(at, mtob, leverage, roa), 
+                   \(x) mean(x, na.rm = TRUE)))
 
 df_controls <-
   controls_filled |>
@@ -301,7 +296,7 @@ get_das <- function(compustat, drop_extreme = TRUE) {
                               (rect - lag(rect))) / lag(at)) |>
     ungroup() |>
     mutate(keep = case_when(drop_extreme ~ abs(acc_at) <= 1,
-                            TRUE ~ TRUE)) |>
+                            .default = TRUE)) |>
     filter(lag_fyear == fyear - 1,
            keep, 
            !is.na(salerect_c_at), !is.na(acc_at), !is.na(ppe_at)) |>
@@ -336,8 +331,8 @@ get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
     group_by(gvkey) |>
     arrange(fyear) |>
     mutate(ib_at = 
-      case_when(pm_lag ~ if_else(lag(at) > 0, lag(ib)/lag(at), NA_real_),
-                TRUE ~ if_else(at > 0, ib/at, NA_real_))) |>
+      case_when(pm_lag ~ if_else(lag(at) > 0, lag(ib) / lag(at), NA),
+                .default = if_else(at > 0, ib / at, NA))) |>
     ungroup() |>
     inner_join(das, by = c("gvkey", "fyear")) |>
     select(gvkey, fyear, ff_ind, ib_at)
@@ -345,8 +340,7 @@ get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
   perf_match <-
     perf |>
     inner_join(perf, by = c("fyear", "ff_ind"),
-               suffix = c("", "_other"),
-               relationship = "many-to-many") |>
+               suffix = c("", "_other")) |>
     filter(gvkey != gvkey_other) |>
     mutate(perf_diff = abs(ib_at - ib_at_other)) |>
     group_by(gvkey, fyear) |>
@@ -386,7 +380,7 @@ sho_data <-
   group_by(gvkey) |>
   filter(n() == 1) |>
   ungroup() |>
-  inner_join(fhk_pilot, by = c("gvkey", "pilot")) 
+  inner_join(fhk_pilot, by = c("gvkey", "pilot"))
 
 win_vars <- c("at", "mtob", "leverage", "roa", "da_adj", "acc_at")
 
@@ -407,7 +401,7 @@ sho_accruals <-
 
 ### Discussion questions
 
-1. What would be the effect replacing the code above that creates `ff_data` with the following code?
+1. What would be the effect of replacing the code that creates `ff_data` above with the following code?
 What changes would we need to make to the code creating `for_disc_accruals` in `get_das()` to use this modified version of `ff_data`?
 <ul>
 ```{r}
@@ -434,7 +428,7 @@ How do @Kothari:2005aa explain this?
 If so, which aspect of the code ensures this is true? 
 If not, how might you ensure this and does this cause problems? (Just describe the approach in general; no need to do this.)
 
-6. What are FHK doing in the creation of `controls_filled`? (Hint: The key "verb" is `fill`.) 
+6. What are FHK doing in the creation of `controls_filled`? (Hint: The key "verb" is `fill()`.) 
 Does this seem appropriate?
 Does doing this make a difference?
 
@@ -466,10 +460,10 @@ reg_year_fe <- function(df, dv = "da_adj",
     vcov = as.formula(if_else(!cl_2, "~ gvkey ", "~ year + gvkey"))
   }
   
-  feols(as.formula(model), 
-        vcov = vcov,
-        notes = FALSE,
-        data = df)
+  suppressWarnings(feols(as.formula(model), 
+                         vcov = vcov,
+                         notes = FALSE,
+                         data = df))
 }
 ```
 
@@ -514,18 +508,20 @@ make_reg_table(sho_accruals)
 ```{r}
 #| label: plot_coefficients
 #| include: false
-plot_coefficients <- function(model, title = "") {
+plot_coefficients <- function(model) {
   tibble(name = names(model$coefficients),
          value = as.vector(model$coefficients)) |>
-    filter(grepl("^year.", name)) |>
-    separate(name, into = c("year", "pilot"), sep = ":", fill = "right") |>
-    mutate(year = as.integer(gsub("^year", "", year)),
-           pilot = coalesce(pilot == "pilotTRUE", FALSE)) |>
-    ggplot(aes(x = year, y = value, color = pilot)) +
-    geom_line() +
-    scale_x_continuous(breaks = 2000:2012L) +
-    geom_rect(xmin = 2005, xmax = 2007, ymin = -Inf, ymax = Inf,
-                color = NA, alpha=0.01) 
+  filter(str_detect(name, "^year.")) |>
+  separate(name, into = c("year", "pilot"), sep = ":", fill = "right") |>
+  mutate(year = as.integer(str_replace(year, "^year", "")),
+         pilot = coalesce(pilot == "pilotTRUE", FALSE)) |>
+  ggplot(aes(x = year, y = value, 
+             linetype = pilot, color = pilot)) +
+  geom_line() +
+  scale_x_continuous(breaks = 2000:2012L) +
+  geom_rect(xmin = 2005, xmax = 2007, ymin = -Inf, ymax = Inf,
+              color = NA, alpha = 0.01) +
+  theme_bw()
 }
 ```
 
@@ -533,14 +529,14 @@ plot_coefficients <- function(model, title = "") {
 #| label: fig-coef-plot
 #| fig-height: 7
 #| fig-cap: Baseline by-year replication of FHK
+#| fig-alt: "A plot of coefficients by year and treatment."
 #| fig-width: 10
 #| warning: false
 #| message: false
-#| echo: false
 sho_accruals |>
   mutate(year = as.factor(year(datadate))) |>
-  feols(da_adj ~ year * pilot - pilot - 1  + 
-             log(at) + mtob + roa + leverage, vcov = ~ year + gvkey, data = _) |>
+  feols(da_adj ~ year * pilot - pilot - 1 + log(at) + mtob + roa + leverage,
+        vcov = ~ year + gvkey, data = _) |>
   plot_coefficients()
 ```
 
@@ -564,7 +560,7 @@ sho_accruals_alt <-
   ungroup()
 ```
 
-2. In an online appendix BDLYY say "FHK winsorize covariates for their covariate balance table at 1/99%. We inferred that they also winsorized accruals at this level. Whether they winsorize across sample years or within each year, they do not specify."
+2. In an online appendix, BDLYY say "FHK winsorize covariates for their covariate balance table at 1/99%. We inferred that they also winsorized accruals at this level. Whether they winsorize across sample years or within each year, they do not specify."
 The code above winsorized within each year.
 How would you modify the code to winsorize "across sample years"?
 Does doing so make a difference?
@@ -576,26 +572,26 @@ Does doing so make a difference?
 Does this make a difference to the results?
 
 5. Some of the studies discussed by BDLYY exclude 2004 data from the sample.
-How would you modify the above code to do this here?
+How would you modify the code above to do this here?
 Does excluding 2004 here make a significant difference?
 
-8. What is the range of values for `year` in `sho_accruals`?
+6. What is the range of values for `year` in `sho_accruals`?
 Does this suggest any issues with the code `post = year %in% c(2008, 2009, 2010)` above?
 If so, does fixing any issue have an impact on the results reported above?
 
-9. Would it make sense, in creating `perf` above, if we instead calculated `ib_at` as `if_else(at > 0, ib/at, NA_real_))`?
+7. Would it make sense, in creating `perf` above, if we instead calculated `ib_at` as `if_else(at > 0, ib / at, NA))`?
 What is the effect on the regression results if we use this modified calculation of `ib_at`?
 What do @Kothari:2005aa recommend on this point?
 (*Hint*: Use `pm_lag = FALSE` where applicable.)
 
-10. @Fang:2019tt [p. 10] follow @Fang:2016uy, who "exclude observations for which the absolute value of total accruals-to-total assets) exceeds one. 
+8. @Fang:2019tt [p. 10] follow @Fang:2016uy, who "exclude observations for which the absolute value of total accruals-to-total assets exceeds one. 
 This is a standard practice in the accounting literature because firms with such high total accruals-to-total assets are often viewed as extreme outliers.
 Nonetheless, the FHK results are robust to winsorizing the accrual measures at the 1% and 99% levels instead of excluding extreme outliers."
 Does this claim hold up in the reproduction above?
-What happens if the `filter` on `abs(acc_at) <= 1` is removed from the code above?
+What happens if the `filter()` on `abs(acc_at) <= 1` is removed from the code above?
 (*Hint*: Use `drop_extreme = FALSE` where applicable.)
 
-11. Explain what each line of the function `plot_coefficients` before the line starting with `ggplot` is doing.
+9. Explain what each line of the function `plot_coefficients()` before the line starting with `ggplot()` is doing.
 (*Hint*: It may be helpful to store the model that is fed to the function above in the variable `model` and then run the function line by line.)
 
 ## Statistical inference {#sec-fhk-inference}
@@ -618,48 +614,40 @@ get_coef_rand <- function(i) {
     inner_join(treatment, by = "gvkey")
   
   reg_data_alt |> 
-      reg_year_fe(controls = TRUE, firm_fe = TRUE) |> 
-      tidy() |> 
-      select(term, estimate) |>
-      pivot_wider(names_from = "term", values_from = "estimate") |>
-      mutate(iteration = i) |>
-      suppressWarnings()
+    reg_year_fe(controls = TRUE, firm_fe = TRUE) |> 
+    broom::tidy() |> 
+    select(term, estimate) |>
+    pivot_wider(names_from = "term", values_from = "estimate") |>
+    mutate(iteration = i) |>
+    suppressWarnings()
 }
 ```
 
 ```{r}
-#| eval: false 
-#| include: false
-set.seed(2021)
-rand_results <- bind_rows(lapply(1:1000, get_coef_rand))
-```
-
-```{r}
-#| label: rand_results
 #| cache: true
-#| echo: false
-#| warning: false
-#| dependson: sho_accruals, get_coef_rand
+#| dependson: get_coef_rand
+#| label: rand_results
 #| include: false
-library(parallel)
 set.seed(2021)
-rand_results <- bind_rows(mclapply(1:1000, get_coef_rand, mc.cores = 8))
+rand_results <-
+  1:1000 |>
+  map(get_coef_rand) |> 
+  list_rbind() |>
+  system_time()
 ```
 
 ```{r}
+#| label: fms
 #| cache: true
 #| warning: false
 #| dependson: sho_accruals, reg_functions, rand_results
 #| include: false
-fms <- list()
-fms[[1]] <- reg_year_fe(sho_accruals, cl_2 = TRUE)
-fms[[2]] <- reg_year_fe(sho_accruals, cl_2 = FALSE)
+fms <- list(reg_year_fe(sho_accruals, cl_2 = FALSE),
+            reg_year_fe(sho_accruals, cl_2 = TRUE))
+vcovs <- list(vcov(fms[[1]]), vcov(fms[[2]]))
 fms[[3]] <- fms[[2]]
 
-vcovs <- list()
-vcovs[[1]] <- vcov(fms[[1]])
-vcovs[[2]] <- vcov(fms[[2]])
-vcov <- vcovs[[2]]
+vcov <- vcovs[[1]]
 vcov["pilotTRUE:duringTRUE", "pilotTRUE:duringTRUE"] <-
   var(rand_results[["pilotTRUE:duringTRUE"]])
 vcov["pilotTRUE:postTRUE", "pilotTRUE:postTRUE"] <- 
@@ -671,13 +659,18 @@ vcovs[[3]] <- vcov
 #| label: tbl-rand-inf
 #| warning: false
 #| echo: false
-#| output: asis
 #| tbl-cap: Results with randomization inference
+#| cache: true
+#| dependson: fms
+se_notes <- tribble(~term,  ~`1`,  ~`2`, ~`3`,
+                    "SEs", "CL-i", "CL-2", "RI")
+
 modelsummary(fms, vcov = vcovs, 
              estimate = "{estimate}{stars}",
-             gof_map = c("nobs", "r.squared"),
+             gof_map = "nobs",
              stars = c('*' = .1, '**' = 0.05, '***' = .01),
-             coef_omit = "^(during|post|pilot)TRUE$")
+             coef_omit = "^(during|post|pilot)TRUE$",
+             add_rows = se_notes)
 ```
 
 ### Exercises
