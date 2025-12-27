@@ -716,7 +716,7 @@ results <-
 
 ```{r}
 #| label: results_3
-#| eval: true
+#| eval: false
 #| include: false
 #| warning: false
 #| cache: true
@@ -732,6 +732,7 @@ results <-
 
 ```{r}
 #| label: decile_cuts
+#| eval: false
 #| echo: false
 #| cache: true
 #| dependson: results_3
@@ -755,7 +756,7 @@ decile_cuts <-
 
 ```{r}
 #| label: results_deciles
-#| eval: true
+#| eval: false
 #| include: false
 #| cache: true
 #| dependson: results_3, decile_cuts
@@ -772,7 +773,7 @@ results_deciles <-
 
 ```{r}
 #| label: link_table2
-#| eval: true
+#| eval: false
 #| include: false
 #| cache: true
 #| dependson: results_deciles
@@ -786,7 +787,7 @@ link_table <-
 
 ```{r}
 #| label: rets
-#| eval: true
+#| eval: false
 #| include: false
 #| cache: true
 #| dependson: link_table2
@@ -804,6 +805,7 @@ dbDisconnect(db)
 
 ```{r}
 #| echo: false
+#| eval: false
 plot_data <-
   results_deciles |>
   filter(!is.na(rdq)) |>
@@ -820,6 +822,7 @@ plot_data <-
 
 ```{r}
 #| label: fig-pre
+#| eval: false
 #| echo: false
 #| fig-cap: Pre-announcement returns
 #| fig-alt: "Plot of cumulative abnormal returns over 60 days prior to earnings announcement by earnings surprise decile. Cumulative abnormal returns are increasing in earnings suprise decile. For earnings suprise decile 10, cumulative abnormal returns start at zero and are consistently positive and increasing over time. For earnings suprise decile 1, cumulative abnormal returns start at zero and are consistently negative and decreasing over time."
@@ -844,6 +847,7 @@ plot_data |>
 
 ```{r}
 #| label: fig-post
+#| eval: false
 #| echo: false
 #| results: asis
 #| fig-cap: Post-announcement returns
