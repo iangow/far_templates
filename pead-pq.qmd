@@ -13,6 +13,7 @@ library(DBI)
 library(farr)
 library(modelsummary)
 library(furrr)
+library(dbplyr)       # window_order()
 ```
 
 ```{r}
@@ -347,7 +348,7 @@ regular_fyears <-
   firm_years |>
   inner_join(qtr_num, by = c("gvkey", "datadate")) |>
   group_by(gvkey) |>
-  dbplyr::window_order(gvkey, datadate) |>
+  window_order(gvkey, datadate) |>
   mutate(fyear_length = datadate - lag(datadate)) |>
   ungroup() |>
   mutate(regular_year = num_quarters == 4 & 
@@ -361,7 +362,7 @@ reg_data <-
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
   select(gvkey, datadateq, fyearq, rdq, niq, saleq) |>
   group_by(gvkey) |>
-  dbplyr::window_order(datadateq) |>
+  window_order(datadateq) |>
   mutate(sale_lag_1 = lag(saleq, 1L),
          sale_lag_4 = lag(saleq, 4L),
          sale_lag_5 = lag(saleq, 5L),
@@ -382,7 +383,7 @@ reg_data_fos <-
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
   select(gvkey, datadateq, fyearq, rdq, ibq) |>
   group_by(gvkey) |>
-  dbplyr::window_order(datadateq) |>
+  window_order(datadateq) |>
   mutate(ib_lag_4 = lag(ibq, 4L),
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
