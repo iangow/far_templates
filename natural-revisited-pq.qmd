@@ -301,7 +301,7 @@ get_das <- function(compustat, drop_extreme = TRUE) {
            keep, 
            !is.na(salerect_c_at), !is.na(acc_at), !is.na(ppe_at)) |>
     group_by(ff_ind, fyear) |>
-    mutate(num_obs = n(), .groups = "drop") |>
+    mutate(num_obs = n()) |>
     filter(num_obs >= 10) |>
     ungroup()
   
@@ -322,7 +322,7 @@ get_das <- function(compustat, drop_extreme = TRUE) {
     select(gvkey, fyear, ff_ind, acc_at, da) 
 }
 
-get_pm <- function(compustat, das, pm_lag = TRUE, drop_extreme = TRUE) {
+get_pm <- function(compustat, pm_lag = TRUE, drop_extreme = TRUE) {
   
   das <- get_das(compustat, drop_extreme = drop_extreme)
   
