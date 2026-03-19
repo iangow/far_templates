@@ -376,8 +376,7 @@ crsp_link <-
              join_by(gvkey, between(datadate, linkdt, linkenddt))) |>
   select(gvkey, datadate, permno) |>
   mutate(start_month = as.Date(floor_date(datadate + months(4L), "month")),
-         end_month = as.Date(floor_date(datadate + months(16L) - days(1L), 
-                                        "month")),
+         end_month = as.Date(floor_date(datadate + months(15L), "month")),
          month = floor_date(datadate, 'month'))
 
 crsp_data <-
@@ -424,10 +423,13 @@ me_decile_assignments <-
 #| include: false
 cum_size_rets <-
   me_decile_assignments |>
-  select(datadate, decile) |>
+  inner_join(
+    crsp_link |>
+      collect(),
+    by = c("permno", "datadate")
+  ) |>
+  select(datadate, decile, start_month, end_month) |>
   distinct() |>
-  mutate(start_month = datadate + months(4),
-         end_month =  datadate + months(16)) |>
   inner_join(size_rets, 
              join_by(decile, start_month <= month, end_month >= month)) |>
   group_by(datadate, decile) |>
