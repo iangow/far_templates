@@ -372,7 +372,7 @@ dbDisconnect(db)
 \newpage
 ## Discussion questions
 
-1. Given the evidence presented in the simulation, how do you interpret the regression results presented above?
+1. Given the evidence presented in the simulation, how do you interpret the regression results presented in @tbl-big4-actual?
 How do @DeFond:2017wl appear to interpret the results?
 
 2. Referring back to the basic causal relations described in Section 4.2, what is the causal diagram implied by equation (1) and Table 2 of @Lawrence:2011tv?
