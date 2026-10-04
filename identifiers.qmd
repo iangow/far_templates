@@ -223,6 +223,11 @@ funda_link_combined |>
   kbl(booktabs = TRUE)
 ```
 
+9. General Motors Corporation declared bankruptcy in June 2009.
+Does the successor firm General Motors *Company* have the same GVKEY as General Motors Corporation? The same PERMNO?
+Do the answers make sense given the underlying economic and accounting realities?
+(*Hint:* You can find the relevant PERMNOs on `stocknames` using the ticker "GM", and their GVKEYs using `ccm_link`.)
+
 ```{r}
 #| include: false
 dbDisconnect(db)
