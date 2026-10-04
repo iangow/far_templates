@@ -136,7 +136,7 @@ What explains this?
 
 ```{r}
 stocknames |> 
-  filter(str_detect(comnam, '^DELL ')) |> 
+  filter(ticker == "DELL") |>
   select(permno, cusip, ncusip, comnam, siccd, namedt, nameenddt) |>
   collect()
 ```
