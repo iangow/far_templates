@@ -876,19 +876,19 @@ plot_data |>
 
 ### Discussion questions
 
-1. A common feature of @Bernard:1989uu and @Ball:1968ub is that both were addressing issues with "conventional wisdom" at their respective times. 
+1. Both @Bernard:1989uu and @Ball:1968ub were addressing issues with "conventional wisdom" at their respective times.
 How had conventional wisdom changed in the years between 1968 and 1989?
 
-2.	Evaluate the introduction of @Bernard:1989uu.
+2. Evaluate the introduction of @Bernard:1989uu.
 How clear is the research question to you from reading this? 
-How does this introduction compare with other papers we've read in the course? 
-With other papers you have seen?
+How would you compare this introduction with other papers you have read in this course or elsewhere?
 
-3. How persuasive do you find @Bernard:1989uu to be? 
-(Obviously answering this one requires reading the paper fairly closely.)
+3. How persuasive do you find @Bernard:1989uu to be?
+What evidence and arguments do you find persuasive or not persuasive?
+(Answering this question requires you to read the paper fairly closely.)
 
-4. The analysis above considers the 13-year period from 1974 to 1986.
-What changes would you need to make to the code to run the analysis for the 10-year period from 2010 to 2019?
+4. The analysis underlying @fig-post considers the 13-year period from 1974 to 1986.
+What changes would you need to make to the code to run the analysis for the 13-year period from 2007 to 2019?
 (If you choose to make this change and run the code, what do you notice about the profile of returns in the post-announcement period?
 Does it seem necessary to make an additional tweak to the code to address this?)
 
@@ -900,4 +900,4 @@ Can you suggest an alternative trading strategy?
 What changes to the code would be needed to implement this alternative?
 
 7. Is it appropriate to *add* returns to get cumulative abnormal returns as is done in `car = cumsum(ar)`? 
-What would be an alternative approach?
+What would be one alternative approach?

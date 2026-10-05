@@ -98,7 +98,7 @@ sample_splits <-
 formula <- str_c(y_var, " ~ ", str_c(X_vars, collapse = " + "))
 fm1 <- glm(formula, data = data_train, family = binomial)
 
-within_sample <-
+within_sample1 <-
   data_train |>
   mutate(score = predict(fm1, 
                          newdata = pick(everything()), type = "response"),
@@ -145,6 +145,14 @@ fm2 <- rpart(formula, data = data_train,
 ```
 
 ```{r}
+#| include: false
+within_sample2 <-
+  data_train |>
+  mutate(score = predict(fm2, newdata = pick(everything()))[, 2],
+         predicted = score > 0.5)
+```
+
+```{r}
 #| echo: false
 #| label: fig-tree
 #| fig-height: 3
@@ -160,13 +168,21 @@ Can you provide an intuitive explanation for the fitted tree in @fig-tree?
 If so, outline your explanation.
 If not, what challenges prevent you from doing so?
 
-2. Use `r n_folds`-fold cross validation to assess the performance of the classification tree approach using the parameters above.
+2. Use `r n_folds`-fold cross-validation to assess the performance of the classification tree approach using the parameters above.
 
 3. What do the parameters `cp` and `minbucket` represent?
 
 4. How does the classification tree change if you increase the parameter `cp`?
 
-5. Use `r n_folds`-fold cross validation to assess the performance of the classification tree approach with three different parameters for `minbucket` (the one used above and two others).
+5. Use `r n_folds`-fold cross-validation and AUC to assess the performance of the classification tree approach with three different parameters for `minbucket` (the one used above and two others).
+
+6. Calculate AUC for the data stored in `within_sample2` above (this is for the tree stored in `fm2` and shown in @fig-tree).
+
+```{r}
+#| include: false
+#| eval: false
+auc(within_sample2$score, within_sample2$misstate)
+```
 
 ## Penalized models {#sec-predict-penalized}
 
@@ -217,14 +233,6 @@ fm_lasso <- glmnet(x = as.matrix(data_train[X_vars]),
 4. Calculate AUC and produce the confusion matrix for `fm_lasso` applied to `data_train` (i.e., in sample).
 Interpret these results.
 (*Hint*: You might use this code: `predict(fm_lasso, newx = as.matrix(data_train[X_vars]))` and the `auc` function supplied with the `farr` package.)
-
-5. Calculate the AUC for the data stored in `within_sample` above (this is for the tree stored in `fm2`).
-
-```{r}
-#| include: false
-#| eval: false
-auc(within_sample$prob, within_sample$misstate)
-```
 
 ```{r}
 #| label: fit_rus_model

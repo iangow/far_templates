@@ -21,8 +21,17 @@ library(fixest)        # feols()
 
 ```{r}
 #| include: false
-test_summ <-
+camp_scores <-
   test_scores |>
+  inner_join(camp_attendance, by = "id") |>
+  rename(treat = camp) |>
+  mutate(post = grade >= 7)
+```
+
+```{r}
+#| include: false
+test_summ <-
+  camp_scores |>
   filter(grade %in% 6:7L) |>
   group_by(post, treat) |>
   summarize(score = mean(score), .groups = "drop") |>
@@ -34,7 +43,7 @@ test_summ <-
 ```{r}
 #| include: false
 mean_by_grade <-
-  test_scores |>
+  camp_scores |>
   group_by(grade) |>
   summarize(score = mean(score),
             .groups = "drop") 
@@ -43,7 +52,7 @@ mean_by_grade |> kable(digits = 3)
 
 ```{r}
 #| include: false
-fm_grade <- lm(score ~ factor(grade), data = test_scores)
+fm_grade <- lm(score ~ factor(grade), data = camp_scores)
 summary(fm_grade)
 ```
 
@@ -51,15 +60,15 @@ summary(fm_grade)
 #| echo: false
 demean <- function(x) x - mean(x)
 
-test_scores_demean <-
-  test_scores |>
+camp_scores_demean <-
+  camp_scores |>
   group_by(id) |>
   mutate(score = demean(score)) |>
   group_by(grade) |>
   mutate(score = demean(score)) 
   
 fm_demean <- lm(score ~ treat * post, 
-                data = test_scores_demean, x = TRUE)
+                data = camp_scores_demean, x = TRUE)
 ```
 
 ```{r}
@@ -90,7 +99,7 @@ If we wanted to be explicit, what value would we need to provide for that argume
 ```{r}
 #| label: fm_dd_fe
 fm_dd_fe <- lm(score ~ treat * post + factor(grade), 
-               data = test_scores)
+               data = camp_scores)
 ```
  
 With this approach (output below), we have *two* fixed effects omitted: `factor(grade)5` (not even shown) and `factor(grade)8`, which is shown, but with `NA` estimates.
@@ -102,7 +111,7 @@ summary(fm_dd_fe)
 ```
 </ul>
 
-5.  In words, what are we doing to create `test_scores_demean`?
+5.  In words, what are we doing to create `camp_scores_demean`?
 Intuitively, why might this affect the need to use fixed effects?
 
 6.  Let's explore the regression stored in `fm_demean` above? 
@@ -111,7 +120,7 @@ Which of these estimated coefficients is meaningful?
 All of them? Some of them? None of them?
 
 ```{r}
-test_scores_demean |> 
+camp_scores_demean |>
   group_by(grade, treat) |> 
   summarize(score = mean(score), .groups = "drop") |>
   kbl(booktabs = TRUE, digits = 3)
@@ -128,7 +137,7 @@ What happens if we omit it (i.e., just include `post * treat`)?
 #| label: tbl-feols
 #| tbl-cap: "Regressions results using `feols()`"
 #| echo: false
-fefm <- feols(score ~ I(post * treat) | grade + id, data = test_scores)
+fefm <- feols(score ~ I(post * treat) | grade + id, data = camp_scores)
 modelsummary(fefm,
              estimate = "{estimate}{stars}",
              gof_map = "nobs",
@@ -146,52 +155,36 @@ fm <- lm(ta ~ big_n + cfo + size + lev + mtb +
 
 ```{r}
 #| include: false
-fm_aux_size <- lm(size ~ big_n + cfo + lev + mtb + 
-                    factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
-                  data = comp, na.action = na.exclude)
-
-fm_aux_ta <- lm(ta ~ big_n + cfo + lev + mtb + 
-                  factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
+fm_aux_ta <- lm(ta ~ big_n + size + lev + mtb +
+                  factor(fyear) * (inv_at + I(d_sale - d_ar) + ppe),
                 data = comp, na.action = na.exclude)
 
-aux_data <- tibble(size = resid(fm_aux_size),
-                  ta = resid(fm_aux_ta))
-fm_aux <- lm(ta ~ size, data = aux_data)
+fm_aux_cfo <- lm(cfo ~ big_n + size + lev + mtb +
+                   factor(fyear) * (inv_at + I(d_sale - d_ar) + ppe),
+                 data = comp, na.action = na.exclude)
+
+aux_data <- tibble(ta = resid(fm_aux_ta),
+                   cfo = resid(fm_aux_cfo))
+fm_aux <- lm(ta ~ cfo, data = aux_data)
 ```
 
 ```{r}
 #| include: false
 #| label: fig-aux-all
-#| fig-cap: "Illustration of FWL: Total accruals and size"
+#| fig-cap: "Illustration of FWL: Total accruals and CFO"
 aux_data |>
-  filter(!is.na(size), !is.na(ta)) |>
-  ggplot(aes(x = size, y = ta)) + 
+  filter(!is.na(cfo), !is.na(ta)) |>
+  ggplot(aes(x = cfo, y = ta)) +
   geom_point() +
-  geom_smooth(method = 'lm', se = FALSE, linetype = 2) +
+  geom_smooth(method = 'lm', formula = y ~ x, se = FALSE, linetype = 2) +
   geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"))
 ```
 
 
 ### Exercises
 
-1. Verify the Frisch-Waugh-Lovell theorem using `big_n` and `cfo` in place of `size`.
-For each variable, also produce plots like those above.
-Why are the plots with `big_n` as the independent variable less helpful?
-
-```{r}
-#| include: false
-fm_aux_size <- lm(size ~ big_n + cfo + lev + mtb + 
-                    factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
-                  data = comp, na.action = na.exclude)
-
-fm_aux_ta <- lm(ta ~ big_n + cfo + lev + mtb + 
-                  factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
-                data = comp, na.action = na.exclude)
-
-aux_data <- tibble(size = resid(fm_aux_size),
-                  ta = resid(fm_aux_ta))
-fm_aux <- lm(ta ~ size, data = aux_data)
-```
+1. Verify the Frisch-Waugh-Lovell theorem using `big_n` and `lev` in place of `cfo` and produce plots like [the book's FWL plot](https://iangow.github.io/far_book/reg-basics.html#fig-aux-all) for each variable.
+Does the plot with `big_n` as the independent variable seem less helpful?
 
 ```{r}
 #| include: false
@@ -207,7 +200,7 @@ modelsummary(list(fm, fm_aux),
 
 2. Above we said that the standard errors of the main regression and the auxiliary regression using the Frisch-Waugh-Lovell theorem should be "very similar".
 Confirm that the standard errors are similar across the variants of `fm` and `fm_aux` that you calculated for the previous question.
-(*Hint*: For regressions with `big_n` as the variable of interest, `summary(fm_aux)$coefficients` and `summary(fm)$coefficients["big_nTRUE", ]` should provide access to the data you want to compare.)
+(*Hint*: For the `big_n` variant, compare `summary(fm_aux)$coefficients["big_n", ]` with `summary(fm)$coefficients["big_nTRUE", ]`.)
 Can you guess what might explain any differences?
 (*Hint*: Compare `fm$df.residual` and `fm_aux$df.residual` and perhaps use `sqrt()`.)
 

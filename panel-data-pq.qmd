@@ -20,11 +20,11 @@ library(ggplot2)
 
 ```{r}
 #| echo: false
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+db <- dbConnect(duckdb::duckdb())
 
-seg_customer <- tbl(db, Id(schema = "compseg", table = "seg_customer"))
-names_seg <- tbl(db, Id(schema = "compseg", table = "names_seg"))
-funda <- tbl(db, Id(schema = "comp", table = "funda"))
+seg_customer <- load_parquet(db, schema = "compseg", table = "seg_customer")
+names_seg <- load_parquet(db, schema = "compseg", table = "names_seg")
+funda <- load_parquet(db, schema = "comp", table = "funda")
 ```
 
 ```{r}
@@ -290,11 +290,12 @@ Do these conform to what you would expect from @Li:2018tj?
 (It may be easiest to focus on these in groups, e.g., those in $t-5$ to $t-2$, those in $t + 0$ to $t+3$ and those for $t+4$ and $t+5$.)
 7. How do the variables in @tbl-idd-by-year differ from those used in Table 3 of @Li:2018tj?
 Modify the code above (e.g., the `year_diff` function) to produce analysis closer to that reported in Table 3 of @Li:2018tj.
-8. How helpful do you find @fig-coefs-by-year (plot of the coefficients by year)?
-9. The `year_diff` function collapses years after $t + 5$ and before $t - 5$ into years $t + 5$ and $t - 5$, respectively. 
-When would this approach make sense? 
+8. The `year_diff()` function collapses years after $t + 5$ and before $t - 5$ into years $t + 5$ and $t - 5$, respectively.
+When would this approach make sense?
 What would be one alternative approach to handling these years?
 Does your suggested approach make a difference in this setting?
+
+9. How helpful do you find @fig-coefs-by-year (plot of the coefficients by year)?
 10. Describe the data set created from the following code.
 What proportion of the firms in the data set have `same_state` equal to `TRUE`?
 For the purposes of empirical analysis, do the firms with `same_state` equal to `FALSE` enhance, or detract from, our ability to draw causal inferences about the effect of adoption of IDD?
