@@ -14,6 +14,8 @@ library(modelsummary)
 
 ## Econometrics
 
+Here $y_i$ is `income`, $x_{i1}$ is `education`, $x_{i2}$ is `industry` (industriousness), and $x_{i3}$ is `intelligence`.
+
 ```{r}
 #| echo: false
 set.seed(2021)
@@ -30,8 +32,8 @@ df <- tibble(
 ```{r}
 #| echo: false
 fms <- list(lm(income ~ education, data = df),
-            lm(income ~ education + intelligence + industry, data = df),
-            lm(income ~ intelligence + industry, data = df))
+            lm(income ~ education + industry + intelligence, data = df),
+            lm(income ~ industry + intelligence, data = df))
 ```
 
 ```{r}
@@ -48,7 +50,7 @@ modelsummary(fms,
 
 ### Exercises
 
-1. Looking at the simulation code, what are the true values of $\beta := \left(\beta_0, \beta_1, \beta_2, \beta_3 \right)$ and $\alpha := \left(\alpha_0, \alpha_1, \alpha_2 \right)$?
+1. Looking at the simulation code, what are the true values of $\beta := \left(\beta_0, \beta_1, \beta_2, \beta_3 \right)$ and $\alpha := \left(\alpha_0, \alpha_2, \alpha_3 \right)$?
 
 2. Do any of the three regression equations reported in @tbl-income provide good estimates of $\beta$?
 
@@ -59,7 +61,7 @@ What (if any) OLS assumption is violated?
 4. What happens if you substitute the second equation (for $x_{i1}$) into the first equation (for $y_i$)? 
 Does this equation satisfy OLS assumptions in some way?
 
-5. Using the structural equations, what happens if arbitrarily increase the value of `industry` ($x_{i3}$) by one unit?
+5. Using the structural equations, what happens if we arbitrarily increase the value of `industry` ($x_{i2}$) by one unit?
 What happens to `education` ($x_{i1}$)? 
 What happens to `income` ($y_i$)?
 

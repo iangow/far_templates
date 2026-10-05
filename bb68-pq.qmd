@@ -266,7 +266,7 @@ plot_data <-
   group_by(rel_td, earn_gn) |> 
   summarize(across(ends_with("ret"), ~ mean(.x, na.rm = TRUE)),
             .groups = "drop") |>
-  mutate(aret_ew = ret - ew_ret, aret_vw = ret - ew_ret) |>
+  mutate(aret_ew = ret - ew_ret, aret_vw = ret - vw_ret) |>
   compute()
 ```
 
