@@ -56,6 +56,10 @@ size_big4 <-
 
 ## Simulation analysis {#sec-psm-sim}
 
+`get_matches()` below lets `matchit()` estimate the propensity scores.
+For the sample-pair diagnostic, `pscore` is an alias for its returned `distance` column.
+The simulation function uses its `seed` argument so different simulation runs can use different draws.
+
 ```{r}
 #| include: false
 prob_big4 <-
@@ -74,8 +78,9 @@ prob_big4 <-
 #| cache: false
 #| include: false
 get_data <- function(effect = 0, n_firms = 5000, seed = 2021) {
-  set.seed(2021)
-    prob_big4 |>
+  set.seed(seed)
+
+  prob_big4 |>
     sample_n(size = n_firms) |>
     mutate(rand = runif(nrow(pick(everything()))),
            big4 = rand < p_big4,
@@ -83,7 +88,6 @@ get_data <- function(effect = 0, n_firms = 5000, seed = 2021) {
            id = 1:nrow(pick(everything()))) |>
     mutate(audit_quality = big4 * effect + mkt_cap^(1/3) * 0.003 + epsilon) |>
     select(id, big4, mkt_cap, log_mkt_cap, audit_quality)
-  
 }
 
 sim_auditor <- get_data()
@@ -93,23 +97,13 @@ sim_auditor <- get_data()
 #| cache: false
 #| include: false 
 get_matches <- function(df, caliper = 0.03) {
-
-  sim_fm <- glm(!big4 ~ mkt_cap, data = df, 
-              family = binomial(link = "logit"))
-  
-  sim_match_pscores <-
-    df |>
-    mutate(pscore = predict(sim_fm, type = "response"))
-
-  sim_matches <- 
-    matchit(!big4 ~ mkt_cap, data = sim_match_pscores, 
-            caliper = caliper) |>
+  matchit(!big4 ~ mkt_cap, data = df, caliper = caliper) |>
     match.data()
-
-  sim_matches
 }
 
-sim_matches <- get_matches(sim_auditor)
+sim_matches <-
+  get_matches(sim_auditor) |>
+  mutate(pscore = distance)
 ```
 
 ```{r}

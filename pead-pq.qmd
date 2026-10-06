@@ -16,57 +16,13 @@ library(furrr)
 library(dbplyr)       # window_order()
 ```
 
-```{r}
-#| include: false
-db_clean_up <- function(db, envir = .GlobalEnv, verbose = FALSE) {
 
-  # Extract DBI connection from a dbplyr tbl
-  tbl_con <- function(x) {
-    src <- attr(x, "src")
-    if (!is.null(src) && !is.null(src$con)) return(src$con)
-    if (!is.null(x$src) && !is.null(x$src$con)) return(x$src$con)
-    NULL
-  }
-
-  objs <- ls(envir = envir)
-
-  to_remove <- objs[
-    vapply(objs, function(nm) {
-      x <- get(nm, envir = envir)
-
-      # must be a SQL-backed dbplyr table
-      if (!inherits(x, "tbl_sql")) return(FALSE)
-
-      con <- tbl_con(x)
-      !is.null(con) && identical(con, db)
-    }, logical(1))
-  ]
-
-  if (length(to_remove) > 0) {
-    rm(list = to_remove, envir = envir)
-    if (verbose) {
-      message(
-        "Removed ", length(to_remove),
-        " tbl_sql object(s): ",
-        paste(to_remove, collapse = ", ")
-      )
-    }
-  } else if (verbose) {
-    message("No tbl_sql objects found for this connection.")
-  }
-
-  dbDisconnect(db)
-  rm(db, envir = envir)
-
-  invisible(to_remove)
-}
-```
 
 ```{r}
 #| label: wrds_data
 #| include: false
 #| message: false
-#| cache: true
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 funda <- load_parquet(db, schema = "comp", table = "funda")
@@ -85,7 +41,7 @@ fyear_data <-
   filter(!is.na(fyear)) |>
   collect() 
 
-db_clean_up(db)
+dbDisconnect(db, shutdown = TRUE)
 ```
 
 ## Fiscal years
@@ -163,21 +119,10 @@ Check that you match `fyear` in each case.
 
 ## Quarterly data
 
-### Exercises
-
-1. Pick a couple of `gvkey` values from `fundq_probs`. 
-Is it possible to construct a "clean" sequence of consecutive quarterly earnings announcements for each of these firms?
-(Here "clean" means that, at the very least, each quarter shows up just once in the series.)
-What challenges does one face in this task?
-
-2. The code below produces @fig-ni-annual.
-From @fig-ni-annual, it seems that Q2 has been the most profitable on average over the last three decades, while in all decades, Q4 has seen the most sales.
-Can you speculate as to what might explain these facts?
-
 ```{r}
 #| label: plot_data
 #| include: false
-#| cache: true
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 funda <- load_parquet(db, schema = "comp", table = "funda")
@@ -231,7 +176,7 @@ ni_merged <-
 
 plot_data <-
   ni_merged |> 
-  mutate(decade = str_c(floor(fyearq / 10) * 10, "s")) |>
+  mutate(decade = str_c(as.integer(floor(fyearq / 10) * 10), "s")) |>
   filter(!is.na(fqtr), fyearq < 2020) |>
   group_by(decade, fqtr) |> 
   summarize(prop_ni = sum(niq, na.rm = TRUE)/
@@ -245,8 +190,26 @@ plot_data <-
   collect() |>
   mutate(fqtr = factor(fqtr))
 
-db_clean_up(db)
+fundq_probs <- collect(fundq_probs)
+link_table <- collect(link_table)
+ni_annual <- collect(ni_annual)
+ni_qtrly <- collect(ni_qtrly)
+ni_merged <- collect(ni_merged)
+
+dbDisconnect(db, shutdown = TRUE)
 ```
+
+### Exercises
+
+1. Pick a couple of `gvkey` values from `fundq_probs`.
+Is it possible to construct a "clean" sequence of consecutive quarterly earnings announcements for each of these firms?
+(Here "clean" means that, at the very least, each quarter shows up just once in the series.)
+What challenges does one face in this task?
+
+2. The code below produces @fig-ni-annual.
+From @fig-ni-annual, it seems that Q2 has been the most profitable on average over the last three decades, while in all decades, Q4 has seen the most sales.
+Can you speculate as to what might explain these facts?
+
 
 ```{r}
 #| label: fig-ni-annual
@@ -270,6 +233,13 @@ plot_data |>
 #| include: false
 #| message: false
 #| cache: true
+#| cache.vars:
+#|   - n_qtrs
+#|   - n_firms
+#|   - focus_years
+#|   - reg_data
+#|   - reg_data_fos
+#|   - ccm_link
 db <- dbConnect(duckdb::duckdb())
 
 funda <- load_parquet(db, schema = "comp", table = "funda")
@@ -387,13 +357,13 @@ reg_data_fos <-
   mutate(ib_lag_4 = lag(ibq, 4L),
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
-         qtr = quarter(datadateq, with_year = TRUE)) |>
+         qtr = as.numeric(quarter(datadateq, with_year = TRUE))) |>
   ungroup() |>
   collect()
 
 ccm_link <- collect(ccm_link)
 
-db_clean_up(db)
+dbDisconnect(db, shutdown = TRUE)
 ```
 
 ```{r}
@@ -490,7 +460,7 @@ fit_model <- function(gvkey, datadateq) {
 #| include: false
 #| warning: false
 #| cache: true
-#| dependson: reg_data
+#| dependson: wrds_data2
 top_firms <- 
   reg_data |>
   filter(fyearq %in% focus_years) |>
@@ -609,7 +579,7 @@ You can delete this note in preparing your submission.
 #| label: fit_model_fos
 #| echo: false
 #| cache: true
-#| dependson: reg_data_fos
+#| dependson: wrds_data2
 fit_model_fos <- function(gvkey, quarter) {
 
   n_qtrs <- 24
@@ -676,7 +646,7 @@ fit_model_fos <- function(gvkey, quarter) {
 #| label: quarters
 #| cache: true
 #| echo: false
-#| dependson: reg_data_fos
+#| dependson: wrds_data2
 quarters <-
   reg_data_fos |> 
   filter(qtr >= 1974, qtr < 1987) |>
@@ -690,7 +660,7 @@ quarters <-
 #| label: get_results
 #| echo: false
 #| cache: true
-#| dependson: reg_data_fos, fit_model_fos
+#| dependson: wrds_data2, fit_model_fos
 get_results <- function(quarter) {
   
   gvkeys <- 
@@ -705,19 +675,7 @@ get_results <- function(quarter) {
 }    
 ```
 
-```{r}
-#| label: results
-#| eval: false
-#| include: false
-#| warning: false
-#| cache: true
-#| dependson: quarters, get_results
-results <- 
-  quarters |> 
-  map(get_results) |> 
-  list_rbind() |>
-  system_time()
-```
+
 
 ```{r}
 #| label: results_3
@@ -768,6 +726,9 @@ decile_cuts <-
 results_deciles <-
   results |>
   inner_join(decile_cuts, by = "qtr") |>
+  # The first quarter has no prior-quarter breakpoints.
+  filter(lengths(fe1_deciles_lag) > 1,
+         lengths(fe2_deciles_lag) > 1) |>
   rowwise() |>
   mutate(fe1_decile = cut(fe1, fe1_deciles_lag, labels = FALSE),
          fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) |>
@@ -794,7 +755,7 @@ link_table <-
 #| label: rets
 #| eval: false
 #| include: false
-#| cache: true
+#| cache: false
 #| dependson: link_table2
 db <- dbConnect(duckdb::duckdb())
 
@@ -805,7 +766,7 @@ rets <-
   nest_by(rdq, permno) |>
   system_time()
 
-dbDisconnect(db)
+dbDisconnect(db, shutdown = TRUE)
 ```
 
 ```{r}

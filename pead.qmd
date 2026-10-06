@@ -16,64 +16,29 @@ library(furrr)
 library(dbplyr)       # window_order()
 ```
 
-```{r}
-#| include: false
-db_clean_up <- function(db, envir = .GlobalEnv, verbose = FALSE) {
 
-  # Extract DBI connection from a dbplyr tbl
-  tbl_con <- function(x) {
-    src <- attr(x, "src")
-    if (!is.null(src) && !is.null(src$con)) return(src$con)
-    if (!is.null(x$src) && !is.null(x$src$con)) return(x$src$con)
-    NULL
-  }
-
-  objs <- ls(envir = envir)
-
-  to_remove <- objs[
-    vapply(objs, function(nm) {
-      x <- get(nm, envir = envir)
-
-      # must be a SQL-backed dbplyr table
-      if (!inherits(x, "tbl_sql")) return(FALSE)
-
-      con <- tbl_con(x)
-      !is.null(con) && identical(con, db)
-    }, logical(1))
-  ]
-
-  if (length(to_remove) > 0) {
-    rm(list = to_remove, envir = envir)
-    if (verbose) {
-      message(
-        "Removed ", length(to_remove),
-        " tbl_sql object(s): ",
-        paste(to_remove, collapse = ", ")
-      )
-    }
-  } else if (verbose) {
-    message("No tbl_sql objects found for this connection.")
-  }
-
-  dbDisconnect(db)
-  rm(db, envir = envir)
-
-  invisible(to_remove)
-}
-```
 
 ```{r}
 #| label: wrds_data
 #| include: false
 #| message: false
-#| cache: true
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
+#| cache: false
+db <- dbConnect(RPostgres::Postgres(),
+                bigint = "integer",
+                check_interrupts = TRUE)
 
 funda <- tbl(db, Id(schema = "comp", table = "funda"))
+fundq <- tbl(db, Id(schema = "comp", table = "fundq"))
+company <- tbl(db, Id(schema = "comp", table = "company"))
+ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
 
-## Fiscal years {#sec-fyear}
 funda_mod <-
   funda |>
+  filter(indfmt == "INDL", datafmt == "STD",
+         consol == "C", popsrc == "D")
+
+fundq_mod <-
+  fundq |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D")
 
@@ -83,9 +48,7 @@ fyear_data <-
   mutate(month = month(datadate),
          year = year(datadate)) |>
   filter(!is.na(fyear)) |>
-  collect() 
-
-db_clean_up(db)
+  collect()
 ```
 
 ## Fiscal years
@@ -163,38 +126,10 @@ Check that you match `fyear` in each case.
 
 ## Quarterly data
 
-### Exercises
-
-1. Pick a couple of `gvkey` values from `fundq_probs`. 
-Is it possible to construct a "clean" sequence of consecutive quarterly earnings announcements for each of these firms?
-(Here "clean" means that, at the very least, each quarter shows up just once in the series.)
-What challenges does one face in this task?
-
-2. The code below produces @fig-ni-annual.
-From @fig-ni-annual, it seems that Q2 has been the most profitable on average over the last three decades, while in all decades, Q4 has seen the most sales.
-Can you speculate as to what might explain these facts?
-
 ```{r}
 #| label: plot_data
 #| include: false
-#| cache: true
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-
-funda <- tbl(db, Id(schema = "comp", table = "funda"))
-fundq <- tbl(db, Id(schema = "comp", table = "fundq"))
-company <- tbl(db, Id(schema = "comp", table = "company"))
-ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
-
-funda_mod <-
-  funda |>
-  filter(indfmt == "INDL", datafmt == "STD",
-         consol == "C", popsrc == "D")
-
-fundq_mod <-
-  fundq |>
-  filter(indfmt == "INDL", datafmt == "STD", 
-         consol == "C", popsrc == "D")
-
+#| cache: false
 fundq_probs <-
   fundq_mod |>
   group_by(gvkey, datadate) |>
@@ -211,16 +146,19 @@ link_table <-
   mutate(month = lpad(as.character(fyr), 2L, "0")) |>
   mutate(datadate = as.Date(str_c(year, month, '01', sep = "-"))) |>
   mutate(datadate = as.Date(datadate + months(1) - days(1))) |>
-  select(-month, -year, -fqtr)
+  select(-month, -year, -fqtr) |>
+  collect()
 
 ni_annual <-
   funda_mod |>
-  select(gvkey, datadate, fyr, sale, ni)
+  select(gvkey, datadate, fyr, sale, ni) |>
+  collect()
 
 ni_qtrly <-
   fundq_mod |>
   select(gvkey, datadate, fyr, fqtr, saleq, niq, ibq) |>
-  rename(datadateq = datadate)
+  rename(datadateq = datadate) |>
+  collect()
 
 ni_merged <-
   ni_annual |>
@@ -243,8 +181,20 @@ plot_data <-
   collect() |>
   mutate(fqtr = factor(fqtr))
 
-db_clean_up(db)
+fundq_probs <- collect(fundq_probs)
 ```
+
+### Exercises
+
+1. Pick a couple of `gvkey` values from `fundq_probs`.
+Is it possible to construct a "clean" sequence of consecutive quarterly earnings announcements for each of these firms?
+(Here "clean" means that, at the very least, each quarter shows up just once in the series.)
+What challenges does one face in this task?
+
+2. The code below produces @fig-ni-annual.
+From @fig-ni-annual, it seems that Q2 has been the most profitable on average over the last three decades, while in all decades, Q4 has seen the most sales.
+Can you speculate as to what might explain these facts?
+
 
 ```{r}
 #| label: fig-ni-annual
@@ -268,23 +218,13 @@ plot_data |>
 #| include: false
 #| message: false
 #| cache: true
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-
-funda <- tbl(db, Id(schema = "comp", table = "funda"))
-fundq <- tbl(db, Id(schema = "comp", table = "fundq"))
-company <- tbl(db, Id(schema = "comp", table = "company"))
-ccmxpf_lnkhist <- tbl(db, Id(schema = "crsp", table = "ccmxpf_lnkhist"))
-
-funda_mod <-
-  funda |>
-  filter(indfmt == "INDL", datafmt == "STD", 
-         consol == "C", popsrc == "D")
-
-fundq_mod <-
-  fundq |>
-  filter(indfmt == "INDL", datafmt == "STD", 
-         consol == "C", popsrc == "D")
-
+#| cache.vars:
+#|   - n_qtrs
+#|   - n_firms
+#|   - focus_years
+#|   - reg_data
+#|   - reg_data_fos
+#|   - ccm_link
 ## Time-series properties of earnings
 n_qtrs <- 20
 n_firms <- 70
@@ -306,18 +246,21 @@ link_table <-
   mutate(month = lpad(as.character(fyr), 2L, "0")) |>
   mutate(datadate = as.Date(str_c(year, month, '01', sep = "-"))) |>
   mutate(datadate = as.Date(datadate + months(1) - days(1))) |>
-  select(-month, -year, -fqtr)
+  select(-month, -year, -fqtr) |>
+  collect()
 
 fundq_local <-
   fundq_mod |>
   semi_join(companies, by = "gvkey") |>
   filter(saleq > 0 & !is.na(saleq)) |>
   select(gvkey, datadate, fyr, fqtr, fyearq, rdq, niq, saleq, ibq) |>
-  rename(datadateq = datadate)
+  rename(datadateq = datadate) |>
+  collect()
 
 firm_years <-
   funda_mod |>
-  select(gvkey, datadate)
+  select(gvkey, datadate) |>
+  collect()
   
 ## Post-earnings announcement drift
 ccm_link <-
@@ -344,7 +287,7 @@ regular_fyears <-
   firm_years |>
   inner_join(qtr_num, by = c("gvkey", "datadate")) |>
   group_by(gvkey) |>
-  window_order(gvkey, datadate) |>
+  arrange(gvkey, datadate) |>
   mutate(fyear_length = datadate - lag(datadate)) |>
   ungroup() |>
   mutate(regular_year = num_quarters == 4 & 
@@ -358,7 +301,7 @@ reg_data <-
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
   select(gvkey, datadateq, fyearq, rdq, niq, saleq) |>
   group_by(gvkey) |>
-  window_order(datadateq) |>
+  arrange(datadateq) |>
   mutate(sale_lag_1 = lag(saleq, 1L),
          sale_lag_4 = lag(saleq, 4L),
          sale_lag_5 = lag(saleq, 5L),
@@ -379,7 +322,7 @@ reg_data_fos <-
   semi_join(regular_fyears, by = c("gvkey", "datadate")) |>
   select(gvkey, datadateq, fyearq, rdq, ibq) |>
   group_by(gvkey) |>
-  window_order(datadateq) |>
+  arrange(datadateq) |>
   mutate(ib_lag_4 = lag(ibq, 4L),
          ib_seas_diff = ibq - ib_lag_4,
          lag_ib_seas_diff  = lag(ib_seas_diff, 1L),
@@ -388,8 +331,6 @@ reg_data_fos <-
   collect()
 
 ccm_link <- collect(ccm_link)
-
-db_clean_up(db)
 ```
 
 ```{r}
@@ -486,7 +427,7 @@ fit_model <- function(gvkey, datadateq) {
 #| include: false
 #| warning: false
 #| cache: true
-#| dependson: reg_data
+#| dependson: wrds_data2
 top_firms <- 
   reg_data |>
   filter(fyearq %in% focus_years) |>
@@ -605,7 +546,7 @@ You can delete this note in preparing your submission.
 #| label: fit_model_fos
 #| echo: false
 #| cache: true
-#| dependson: reg_data_fos
+#| dependson: wrds_data2
 fit_model_fos <- function(gvkey, quarter) {
 
   n_qtrs <- 24
@@ -672,7 +613,7 @@ fit_model_fos <- function(gvkey, quarter) {
 #| label: quarters
 #| cache: true
 #| echo: false
-#| dependson: reg_data_fos
+#| dependson: wrds_data2
 quarters <-
   reg_data_fos |> 
   filter(qtr >= 1974, qtr < 1987) |>
@@ -686,7 +627,7 @@ quarters <-
 #| label: get_results
 #| echo: false
 #| cache: true
-#| dependson: reg_data_fos, fit_model_fos
+#| dependson: wrds_data2, fit_model_fos
 get_results <- function(quarter) {
   
   gvkeys <- 
@@ -701,19 +642,7 @@ get_results <- function(quarter) {
 }    
 ```
 
-```{r}
-#| label: results
-#| eval: false
-#| include: false
-#| warning: false
-#| cache: true
-#| dependson: quarters, get_results
-results <- 
-  quarters |> 
-  map(get_results) |> 
-  list_rbind() |>
-  system_time()
-```
+
 
 ```{r}
 #| label: results_3
@@ -764,6 +693,9 @@ decile_cuts <-
 results_deciles <-
   results |>
   inner_join(decile_cuts, by = "qtr") |>
+  # The first quarter has no prior-quarter breakpoints.
+  filter(lengths(fe1_deciles_lag) > 1,
+         lengths(fe2_deciles_lag) > 1) |>
   rowwise() |>
   mutate(fe1_decile = cut(fe1, fe1_deciles_lag, labels = FALSE),
          fe2_decile = cut(fe2, fe2_deciles_lag, labels = FALSE)) |>
@@ -792,16 +724,12 @@ link_table <-
 #| include: false
 #| cache: true
 #| dependson: link_table2
-db <- dbConnect(RPostgres::Postgres(), bigint = "integer")
-
 rets <- 
   link_table |>
   get_event_rets(db, event_date = "rdq", 
                  win_start = -60, win_end = 60) |>
   nest_by(rdq, permno) |>
   system_time()
-
-dbDisconnect(db)
 ```
 
 ```{r}
@@ -897,3 +825,9 @@ What changes to the code would be needed to implement this alternative?
 
 7. Is it appropriate to *add* returns to get cumulative abnormal returns as is done in `car = cumsum(ar)`? 
 What would be one alternative approach?
+
+
+```{r}
+#| include: false
+dbDisconnect(db)
+```

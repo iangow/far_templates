@@ -332,18 +332,6 @@ acc_data_raw <-
   filter(between(fyear, 1962, 1991),
          avg_at > 0)
 
-get_deciles <- function(x) {
-  breaks <- quantile(x, probs = seq(from = 0, to = 1, by = 0.1),
-                     na.rm = TRUE)
-  breaks[length(breaks)] <- Inf
-  list(breaks)
-}
-
-form_deciles <- function(x) {
-  cuts <- get_deciles(x)
-  cut(x, cuts[[1]], labels = FALSE, include.lowest = TRUE)
-}
-
 acc_data <- 
   acc_data_raw |>
   mutate(earn = oiadp / avg_at,
@@ -354,10 +342,10 @@ acc_data <-
   mutate(lead_earn = lead(earn)) |>
   ungroup() |> 
   collect() |>
-  mutate(acc_decile = form_deciles(acc),
-         earn_decile = form_deciles(earn),
-         cfo_decile = form_deciles(cfo),
-         lead_earn_decile = form_deciles(lead_earn),
+  mutate(acc_decile = ntile(acc, 10),
+         earn_decile = ntile(earn, 10),
+         cfo_decile = ntile(cfo, 10),
+         lead_earn_decile = ntile(lead_earn, 10),
          sic2 = str_sub(as.character(sic), 1, 2)) |> 
   filter(!finance, !is.na(acc))   
 
@@ -631,9 +619,9 @@ year_of_event <- 10
 decile_data <-
   sim_reg_data |>
   filter(year == year_of_event) |>
-  mutate(cfo_decile = form_deciles(cfo),
+  mutate(cfo_decile = ntile(cfo, 10),
          ni_decile = form_deciles(ni),
-         acc_decile = form_deciles(acc)) |>
+         acc_decile = ntile(acc, 10)) |>
   select(id, ends_with("decile")) 
 
 reg_data_deciles <-
