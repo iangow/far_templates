@@ -4,8 +4,6 @@ author: "Your name here"
 format: html
 ---
 
-In this template, we have put the questions from the exercises in `**` to make them bold (to distinguish the questions from your answers).
-
 ```{r}
 #| message: false
 #| include: false
@@ -63,14 +61,15 @@ latest_mkt_cap <-
 
 # Exercises
 
+1. Create a function `cor_alt(x, y)` that uses `cov_alt()` and `var_alt()` to calculate the correlation between `x` and `y`.
+Check that it gives the same value as the built-in function `cor()` for the correlation between `ret_nab` and `ret_cba` from `rets_nab_cba_wide`.
+
 ```{r}
 cor_alt <- function(x, y) {
   # This function is not complete!
   cov_alt(x, y)
 }
 ```
-1. Create a function `cor_alt(x, y)` that uses `cov_alt()` and `var_alt()` to calculate the correlation between `x` and `y`.
-Check that it gives the same value as the built-in function `cor()` for the correlation between `ret_nab` and `ret_cba` from `rets_nab_cba_wide`.
 
 2. If we remove the `drop_na()` line used in creating `rets_nab_cba_wide`, we see missing values for `CBA`.
 There are two reasons for these missing values.
@@ -97,12 +96,11 @@ Looking at the data in `aus_bank_funds`, does this advice seem correct?
 How would you check this claim?
 (*Hint:* You should probably focus on cases where both `xi` and `do` are non-missing and checking more recent years may be easier if you need to look at banks' financial statements.)
 
-7. Above we created a plot of market-to-book ratios.
+7. The book's [market-to-book figure](https://iangow.github.io/far_book/r-intro.html#fig-mb-ts) plots market-to-book ratios.
 Another measure linking stock prices to fundamentals is the **price-to-earnings ratio** (also known as the **PE ratio**).
 Typically, PE ratios are calculated as 
 
 $$ \textrm{PE} = \frac{\textrm{Stock price}}{\textrm{Earnings per share}} $$
-<ul>
 where 
 
 $$ \textrm{Earnings per share} = \frac{\textrm{Net income}}{\textrm{Shares outstanding}} $$
@@ -111,11 +109,10 @@ So we might write
 $$ \textrm{PE} = \frac{\textrm{Stock price} \times \textrm{Shares outstanding}}{\textrm{Net income}} $$
 What critical assumption have we made in deriving the last equation?
 Is this likely to hold in practice?
-</ul>
 
-8. Calculating the PE ratio using `pe = mkt_cap / ib`, create a plot of PE ratio for Australian banks over time like that created for market-to-book ratios above.
+8. Calculating the PE ratio using `pe = mkt_cap / ib`, create a plot similar to the book's [market-to-book figure](https://iangow.github.io/far_book/r-intro.html#fig-mb-ts), but for the PE ratios of Australian banks over time.
 
-9. Suppose you wanted to produce the plots in the test (market capitalization; market-to-book ratios; histogram of ROE) using Excel starting from spreadsheet versions of the three data sets provided above?
+9. Suppose you wanted to produce the plots in the book (market capitalization; market-to-book ratios; histogram of ROE) using Excel starting from spreadsheet versions of the three data sets provided above?
 Which aspects of the task would be easier?
 Which would be more difficult?
 What benefits do you see in using R code as we did above?
@@ -127,12 +124,12 @@ What benefits do you see in using R code as we did above?
 12. Produce a plot like the one above, but focused on questions related to R.
 
 13. If we want to know the popularity of R relative to other languages, we're probably more interested in a percentage, instead of just the counts. 
-Add a new variable that is the fraction of all questions asked in each year with a specific tag out to the dataset and plot this variable focused on questions related to R.
+Add a new variable that is the fraction of all questions asked in each year with a specific tag to the data set and plot this variable focused on questions related to R.
 
 14. Two popular R packages we have used in this chapter---`dplyr` and `ggplot2`---also have Stack Overflow tags.
 Perform the same steps that you did for R above for these two tags to see whether they are growing as well.
 
-15. Produce a plot that depicts the relative popularity of R, Python, SAS, Stata, and Matlab over time.
+15. Produce a plot that depicts the relative popularity of R, Python, SAS, and Stata over time.
 
-16. Which language among R, SAS, Stata, and MATLAB, has triggered the most questions in the history of Stack Overflow? 
+16. Which language among R, SAS, and Stata has triggered the most questions in the history of Stack Overflow?
 (*Hint*: Use the `dplyr` verbs `summarize()` and `group_by()`.)
