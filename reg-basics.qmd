@@ -21,6 +21,8 @@ library(fixest)        # feols()
 
 ```{r}
 #| include: false
+test_scores <- test_scores |> mutate(grade = as.integer(grade))
+
 camp_scores <-
   test_scores |>
   inner_join(camp_attendance, by = "id") |>
@@ -43,21 +45,22 @@ test_summ <-
 ```{r}
 #| include: false
 mean_by_grade <-
-  camp_scores |>
+  test_scores |>
   group_by(grade) |>
   summarize(score = mean(score),
             .groups = "drop") 
-mean_by_grade |> kable(digits = 3)
 ```
 
 ```{r}
 #| include: false
-fm_grade <- lm(score ~ factor(grade), data = camp_scores)
-summary(fm_grade)
+fm_grade <- lm(score ~ factor(grade), data = test_scores)
+
+fm_id <- lm(score ~ treat * post + factor(grade) + factor(id),
+            data = camp_scores, x = TRUE)
 ```
 
 ```{r}
-#| echo: false
+#| include: false
 demean <- function(x) x - mean(x)
 
 camp_scores_demean <-
@@ -71,17 +74,6 @@ fm_demean <- lm(score ~ treat * post,
                 data = camp_scores_demean, x = TRUE)
 ```
 
-```{r}
-#| include: false
-#| label: tbl-fm-demean
-#| tbl-cap: Regression with demeaned test scores
-modelsummary(fm_demean, 
-             estimate = "{estimate}{stars}",
-             coef_omit = "^factor",
-             gof_map = "nobs",
-             stars = c('*' = .1, '**' = 0.05, '***' = .01))
-```
-
 ## Running regressions in R
 
 ### Exercises
@@ -89,41 +81,45 @@ modelsummary(fm_demean,
 1. In using `pivot_wider()` in Chapter 2, we supplied a value to the `id_cols` argument, but we omitted that in creating `test_summ`.
 If we wanted to be explicit, what value would we need to provide for that argument in the code creating `test_summ`?
 
-2. What is the relation between the means in the table produced from `mean_by_grade` and the regression coefficients in `fm_grade`?
+2. What is the relation between the means in the following table and the regression coefficients in `fm_grade`?
+
+```{r}
+#| echo: false
+mean_by_grade |> kbl(booktabs = TRUE, digits = 3)
+```
 
 3. Why is there no estimated coefficient for `factor(grade)5` in `fm_grade`?
 
 4. Now let's return to our earlier regression specification, except this time we include fixed effects for `grade` (see code and output below).
-
-<ul>
-```{r}
-#| label: fm_dd_fe
-fm_dd_fe <- lm(score ~ treat * post + factor(grade), 
-               data = camp_scores)
-```
- 
-With this approach (output below), we have *two* fixed effects omitted: `factor(grade)5` (not even shown) and `factor(grade)8`, which is shown, but with `NA` estimates.
-Why are we losing two fixed effects, while above we lost just one?
+We now have *two* fixed effects omitted: `factor(grade)5` and `factor(grade)8`.
+Why are we now losing two fixed effects, while above we lost just one?
 (*Hint*: Which variables can be expressed as linear combinations of the `grade` indicators?)
 
 ```{r}
-summary(fm_dd_fe)
+#| label: fm_dd_fe
+fm_dd_fe <- lm(score ~ treat * post + factor(grade),
+               data = camp_scores)
 ```
-</ul>
+
+```{r}
+#| echo: false
+tibble(term = names(coef(fm_dd_fe)), estimate = coef(fm_dd_fe)) |>
+  kbl(booktabs = TRUE, digits = 4)
+```
 
 5.  In words, what are we doing to create `camp_scores_demean`?
 Intuitively, why might this affect the need to use fixed effects?
 
-6.  Let's explore the regression stored in `fm_demean` above? 
-Can you relate the coefficients to the numbers in the following table? 
+6. Can you relate the coefficients from the regression stored in `fm_demean` to the numbers in the following table?
 Which of these estimated coefficients is meaningful? 
 All of them? Some of them? None of them?
 
 ```{r}
+#| echo: false
 camp_scores_demean |>
   group_by(grade, treat) |> 
   summarize(score = mean(score), .groups = "drop") |>
-  kbl(booktabs = TRUE, digits = 3)
+  kbl(booktabs = TRUE, digits = 4)
 ```
 
 7.  The `feols()` function from the `fixest` package offers a succinct syntax for adding fixed effects and uses computationally efficient algorithms (much like our demeaning approach above) in estimating these. \indexc{feols()}
@@ -134,14 +130,8 @@ What is the `I()` function doing here?
 What happens if we omit it (i.e., just include `post * treat`)?
 
 ```{r}
-#| label: tbl-feols
-#| tbl-cap: "Regressions results using `feols()`"
-#| echo: false
 fefm <- feols(score ~ I(post * treat) | grade + id, data = camp_scores)
-modelsummary(fefm,
-             estimate = "{estimate}{stars}",
-             gof_map = "nobs",
-             stars = c('*' = .1, '**' = 0.05, '***' = .01))
+coefficients(fefm)
 ```
 
 ## Frisch-Waugh-Lovell theorem {#fwl}
@@ -149,7 +139,7 @@ modelsummary(fefm,
 ```{r}
 #| include: false
 fm <- lm(ta ~ big_n + cfo + size + lev + mtb + 
-                   factor(fyear)  * (inv_at + I(d_sale - d_ar) + ppe),
+           factor(fyear) * (inv_at + I(d_sale - d_ar) + ppe),
          data = comp, na.action = na.exclude)
 ```
 
@@ -168,35 +158,10 @@ aux_data <- tibble(ta = resid(fm_aux_ta),
 fm_aux <- lm(ta ~ cfo, data = aux_data)
 ```
 
-```{r}
-#| include: false
-#| label: fig-aux-all
-#| fig-cap: "Illustration of FWL: Total accruals and CFO"
-aux_data |>
-  filter(!is.na(cfo), !is.na(ta)) |>
-  ggplot(aes(x = cfo, y = ta)) +
-  geom_point() +
-  geom_smooth(method = 'lm', formula = y ~ x, se = FALSE, linetype = 2) +
-  geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"))
-```
-
-
 ### Exercises
 
 1. Verify the Frisch-Waugh-Lovell theorem using `big_n` and `lev` in place of `cfo` and produce plots like [the book's FWL plot](https://iangow.github.io/far_book/reg-basics.html#fig-aux-all) for each variable.
 Does the plot with `big_n` as the independent variable seem less helpful?
-
-```{r}
-#| include: false
-#| label: tbl-fwl-demo
-#| tbl-cap: Demonstration of FWL theorem
-#| warning: false
-modelsummary(list(fm, fm_aux), 
-             estimate = "{estimate}{stars}",
-             coef_omit = "(fyear|ppe|inv_at|d_sale)",
-             gof_map = "nobs",
-             stars = c('*' = .1, '**' = 0.05, '***' = .01))
-```
 
 2. Above we said that the standard errors of the main regression and the auxiliary regression using the Frisch-Waugh-Lovell theorem should be "very similar".
 Confirm that the standard errors are similar across the variants of `fm` and `fm_aux` that you calculated for the previous question.
