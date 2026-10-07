@@ -306,7 +306,7 @@ Describe how you might evaluate the statistical significance of this difference.
 What do these numbers tell you?
 Do you believe that these provide evidence that using (say) 2001 data to train a model that is evaluated on (say) 1993 frauds is problematic?
 
-3. @Bao:2022aa report an AUC in the test sample for an all-features logit model of 0.7228 (see Panel B of Table 1).
+3. @Bao:2022aa report an AUC in the test sample for RUSBoost of 0.7228 (see Panel B of Table 1).
 What differences are there between our approach here and those in @Bao:2020aa and @Bao:2022aa that might account for the differences in AUC?
 
 4. @Bao:2022aa report an AUC in the test sample for an all-features logit model of 0.6842 (see Panel B of Table 1).
