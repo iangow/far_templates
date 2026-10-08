@@ -19,6 +19,10 @@ library(tidyr)         # nest()
 library(sandwich)      # NeweyWest()
 library(plm)           # pmg()
 library(fixest)        # se(), pvalue()
+
+if (knitr::is_latex_output()) {
+  knitr::knit_meta_add(list(rmarkdown::latex_dependency("float")))
+}
 ```
 
 ## Data-generating processes
@@ -84,7 +88,7 @@ hgt_stats_summ |>
 
 2. What effects do you expect changes in the values of `n_samples` or `n` to have on  `mean_error`? Do you expect changing `n_samples` or changing `n` to have a greater effect?
 Verify your conjectures using the simulation code.
-(*Hint:* Consider 100,000 draws of samples of 100 and 10,000 draws of samples of 1,000. In each case you should `set.seed(2023)` afresh and effectively replace data in `hgt_samples`.)
+(*Hint:* Consider 100,000 draws of samples of 100 and 10,000 draws of samples of 1,000. In each case, you should `set.seed(2023)` afresh and effectively replace data in `hgt_samples`.)
 
 ## Hypothesis testing
 
@@ -122,7 +126,7 @@ get_means <- function(sample_size, n_samples, dgf) {
   tibble(i = 1:n_samples,
          sample = map(i, function(x) dgf(sample_size)),
          mean = map_vec(sample, mean),
-         se = map_vec(sample, function(x) sd(x) / sqrt(length(x) - 1))) |>
+         se = map_vec(sample, function(x) sd(x) / sqrt(length(x)))) |>
     select(-sample) |>
     mutate(z = mean / se)
 }
@@ -151,11 +155,12 @@ clt_demo <- function(sample_size, n_samples, dgf) {
     make_clt_plot()
 }
 ```
-The following code reproduces the plot from the book as @fig-bimodal-clt-100.
 
 ```{r}
 #| label: fig-bimodal-clt-100
+#| echo: false
 #| fig-cap: "Histogram for sample means from bimodal distribution: $n = 100$"
+#| fig-pos: H
 clt_demo(sample_size = 100, n_samples = 10000, bimodal_dgf)
 ```
 
@@ -164,7 +169,8 @@ clt_demo(sample_size = 100, n_samples = 10000, bimodal_dgf)
 1. What is the relation between critical values and p-values using z-statistics and t-statistics?
 (*Hint:* Use R functions such as `qt(p/2, df = sample_size - 1)` and `qnorm(p/2)` for various significance levels and sample sizes.)
 
-2. Explain how the output of the following code relates to the statistical tests in the previous question? (*Hint:* Can you use the functions from that question to produce the p-values reported below?)
+2. Explain how the output of the following code relates to the statistical tests above.
+Why does this relationship exist?
 
 ```{r}
 df <- tibble(x = test_sample)
@@ -188,6 +194,7 @@ Examine the output of `clt_demo()` for your function.
 ```{r}
 #| label: diff_samples
 #| cache: true
+#| cache.extra: !expr deparse(body(get_means))
 #| include: false
 set.seed(2023)
 sample_0_stats <- get_means(sample_size = 1000,
@@ -211,6 +218,7 @@ crit_value <- abs(qnorm(0.025))
 ```{r}
 #| label: tbl-rej-choice
 #| tbl-cap: Null hypothesis rejection rates for different approaches
+#| tbl-pos: H
 #| echo: false
 merged_stats |>
   mutate(sig_diff = abs(z_diff) > crit_value,
@@ -223,16 +231,16 @@ merged_stats |>
   kbl(booktabs = TRUE)
 ```
 
-### Exercises
+### Discussion question
 
-1. What is the issue implied by the statistics reported in @tbl-rej-choice?
+What is the issue implied by the statistics reported in @tbl-rej-choice?
 What is the correct approach implied by these statistics?
 Why might researchers prefer to have a choice regarding the test to be used?
 
 ## Dependence
 
 ```{r}
-#: include: false
+#| include: false
 set.seed(2021)
 test <- get_got_data(N = 500, T = 10, 
                      Xvol = 0.75, Evol = 0.75, 
@@ -299,6 +307,7 @@ vcovs[["NW"]] <- vcovNW(fms[["NW"]])
 ```{r}
 #| label: tbl-ses-all
 #| tbl-cap: "Tests for $H_0: \\beta_1 = 0$"
+#| tbl-pos: H
 #| echo: false
 modelsummary(fms, 
              vcov = vcovs,
@@ -308,8 +317,6 @@ modelsummary(fms,
              stars = c('*' = .1, '**' = 0.05, '***' = .01))
 ```
 
-## References {-}
-
 ### Exercises
 
 1. Verify either by direct computation using the data in `coefs_df` or using a little algebra that regressing the first-stage coefficients on a constant (as we did above) yields the desired second-stage results for FM-t.
@@ -318,7 +325,7 @@ modelsummary(fms,
 Using the reported coefficients and standard errors for each of the methods listed in @tbl-ses-all (i.e., `r paste(names(fms), collapse = ", ")`), for which methods is the null hypothesis rejected?
 
 3. Based on the analysis in @Gow:2010ub, when should you use the FM-NW or Z2 approaches?
-What factors likely led to the use of these approaches and claims for them (i.e., robustness to cross-sectional and time-series dependence) that were unsubstantiated (and ultimately false)?
+What factors might have led researchers to use these approaches and make unsubstantiated claims about them (e.g., robustness to cross-sectional and time-series dependence)?
 
 4. If FM-i is, as @Gow:2010ub show, so inappropriate for the situations in which it was used, why do you think it was used in those situations?
 
@@ -327,4 +334,4 @@ Using the `pnorm()` function, determine the p-value associated with each of thes
 Are these one-tailed or two-tailed p-values?
 The values of 1.64, 1.96, and 2.58 are approximations.
 Which function in R allows you to recover the precise critical values associated with a chosen p-value? (*Hint*: Read the help provided by `? pnorm` in R.)
-Provide the critical values to at least four decimal places.
+Provide the critical values to four decimal places.
