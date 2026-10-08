@@ -14,6 +14,10 @@ library(ggplot2)
 library(dbplyr)      # window_order()
 library(lubridate)   # floor_date()
 library(kableExtra)
+
+if (knitr::is_latex_output()) {
+  knitr::knit_meta_add(list(rmarkdown::latex_dependency("float")))
+}
 ```
 
 ## The CRSP database
@@ -70,7 +74,6 @@ Do we get different results?
 What effect does `as.Date()` have?
 
 ```{r}
-#| include: false
 plot_data <-
   dsf |>
   select(date) |>
@@ -86,6 +89,8 @@ Create an additional plot to visualize the source of variation in @fig-mys-plot1
 
 ```{r}
 #| label: fig-mys-plot1
+#| fig-pos: H
+#| fig-height: 3
 #| fig-cap: Number of observations by month (#1)
 #| echo: false
 plot_data |>
@@ -99,6 +104,8 @@ plot_data |>
 
 ```{r}
 #| label: fig-mys-plot2
+#| fig-pos: H
+#| fig-height: 3
 #| fig-cap: Number of observations by month (#2)
 #| echo: false
 plot_data |>
@@ -117,8 +124,6 @@ plot_data |>
 Do the same for `crsp.msi` and `crsp.msf`.
 
 ## All about CUSIPs
-
-### Exercises
 
 ### Exercises
 
@@ -207,6 +212,7 @@ What appears to be the issue for these GVKEYs?)
 
 ```{r}
 #| label: tbl-ccm-cusip-comp
+#| tbl-pos: H
 #| tbl-cap: Comparison of CCM- and CUSIP-based links
 #| echo: false
 funda_link_combined |>
@@ -216,6 +222,7 @@ funda_link_combined |>
 
 ```{r}
 #| label: tbl-ccm-cusip-cov
+#| tbl-pos: H
 #| tbl-cap: Differences in coverage of CCM- and CUSIP-based link tables
 #| echo: false
 funda_link_combined |>
