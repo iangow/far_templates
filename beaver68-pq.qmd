@@ -5,6 +5,21 @@ format: html
 bibliography: book.bib
 ---
 
+The supplied setup caches only the local data frames needed for the questions.
+Connections are recreated on each run; clear the cache to refresh the underlying data.
+
+```{r}
+#| include: false
+#| message: false
+library(dplyr, warn.conflicts = FALSE)
+library(DBI)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+library(farr)
+library(dbplyr)
+```
+
 ## Market reactions to earnings announcements
 
 ### Discussion questions
@@ -13,26 +28,26 @@ bibliography: book.bib
 If there is overlap, do you think that one paper provides superior evidence to the other?
 Or are they just different?
 
-2. What differences are there in the data (e.g., sample period) used in @Beaver:1968vf from the data used in @Ball:1968ub?
+2. What differences are there in the data (e.g., sample period) used in  @Beaver:1968vf from the data used in @Ball:1968ub?
 Why do these differences exist?
 
-3. Do the reasons given by @Beaver:1968vf for his sample selection criteria seem reasonable? 
+3. Do the reasons given by @Beaver:1968vf for his sample selection criteria seem reasonable?
 Do you think these were made prior to looking at results? (Why or why not?)
 Does it matter at what stage in the research process these decisions were made?
 
-3. Which do you think is the better variable---price or volume---for addressing the research questions of @Beaver:1968vf?
+4. Which do you think is the better variable---price or volume---for addressing the research questions of @Beaver:1968vf?
 Do you think it is helpful to have both variables?
 
-4. @Beaver:1968vf compares event-week volume and volatility with their average equivalents in non-event periods.
+5. @Beaver:1968vf compares event-week volume and volatility with their average equivalents in non-event periods.
 @Ball:2008un "quantify the relative importance of earnings announcements in providing new information to the share market" and argue that earnings announcements provide relatively little of this information.
 If volume is a measure of information content, what does Figure 1 of @Beaver:1968vf imply regarding the proportion of information conveyed during earnings announcement weeks?
 Can this be reconciled with reported results in @Beaver:1968vf and the arguments in @Ball:2008un?
 
-5. @Beaver:1968vf discusses the statistical significance of his results on p. 77 (residual volume analysis) and pp. 81-82 (return residual analysis).
-Why do think @Beaver:1968vf uses the approaches discussed there?
+6. @Beaver:1968vf discusses the statistical significance of his results on p. 77 (residual volume analysis) and pp. 81--82 (return residual analysis).
+Why do you think @Beaver:1968vf uses the approaches discussed there?
 How might you evaluate statistical significance more formally if you were writing the paper today?
 
-6. The primary analyses in @Beaver:1968vf are provided in plots.
+7. The primary analyses in @Beaver:1968vf are provided in plots.
 While the cost of producing plots has surely plummeted since 1968, we generally do not see primary analyses presented as plots today.
 Why do you think this is the case?
 
@@ -40,25 +55,23 @@ Why do you think this is the case?
 
 ```{r}
 #| include: false
-library(dplyr, warn.conflicts = FALSE)
-library(DBI)
-library(ggplot2)
-library(lubridate)
-library(tidyr)
-library(farr)
-library(dbplyr)     # For window_order()
-```
-
-```{r wrds_data}
-#| message: false
-#| include: false
 db <- dbConnect(duckdb::duckdb())
 
-fundq <- load_parquet(db, "fundq", "comp")
-ccmxpf_lnkhist <- load_parquet(db, "ccmxpf_lnkhist", "crsp")
-dsi <- load_parquet(db, "dsi", "crsp")
-dsf <- load_parquet(db, "dsf", "crsp")
-stocknames <-load_parquet(db, "stocknames", "crsp")
+dsf <- load_parquet(db, schema = "crsp", table = "dsf")
+dsi <- load_parquet(db, schema = "crsp", table = "dsi")
+ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", table = "ccmxpf_lnkhist")
+stocknames <- load_parquet(db, schema = "crsp", table = "stocknames")
+
+fundq <- load_parquet(db, schema = "comp", table = "fundq")
+```
+
+```{r}
+#| include: false
+#| label: wrds_data
+#| cache: true
+#| cache.vars: [earn_annc_links, earn_annc_rets, earn_annc_vols, earn_annc_summ]
+days_before <- 20L
+days_after <- 20L
 
 first_date <- "2010-01-01"
 last_date <- "2019-12-31"
@@ -67,118 +80,101 @@ earn_annc_dates <-
   fundq |>
   filter(indfmt == "INDL", datafmt == "STD",
          consol == "C", popsrc == "D") |>
-  filter(!is.na(rdq), fqtr==4L) |>
+  filter(!is.na(rdq), fqtr == 4L) |>
   select(gvkey, datadate, rdq) |>
-  filter(between(datadate, first_date, last_date))
+  filter(between(datadate, first_date, last_date)) |>
+  collect()
 
 ccm_link <-
   ccmxpf_lnkhist |>
   filter(linktype %in% c("LC", "LU", "LS"),
          linkprim %in% c("C", "P")) |>
-  rename(permno = lpermno)
+  rename(permno = lpermno) |>
+  mutate(linkenddt = coalesce(linkenddt, max(linkenddt, na.rm = TRUE))) |>
+  collect()
 
 trading_dates <-
   dsi |>
   select(date) |>
-  window_order(date) |>
-  mutate(td = row_number()) |>
-  ungroup() |>
-  compute()
+  collect() |>
+  arrange(date) |>
+  mutate(td = row_number())
 
-min_td <- 
+min_date <-
   trading_dates |>
-  summarize(min(date)) |>
+  summarize(min(date, na.rm = TRUE)) |>
   pull()
 
-max_td <- 
+max_date <-
   trading_dates |>
-  summarize(max(date)) |>
+  summarize(max(date, na.rm = TRUE)) |>
   pull()
-
 
 annc_dates <-
-  tibble(annc_date = seq(min_td, max_td, 1)) |>
-  copy_to(db, df = _ , name = "min_max_dates", overwrite = TRUE) |>
-  left_join(trading_dates, by = c("annc_date"="date")) |>
-  window_order(annc_date) |>
-  fill(td, .direction = "up") |>
-  ungroup() |>
-  compute()
-
-days_before <- 20L
-days_after <- 20L
-
-mkt_rets <-
-  dsf |>
-  inner_join(dsi, by = "date") |>
-  mutate(ret_mkt = ret - vwretd) |>
-  select(permno, date, ret, ret_mkt, vol)
+  tibble(annc_date = seq(min_date, max_date, 1)) |>
+  left_join(trading_dates, by = join_by(annc_date == date)) |>
+  fill(td, .direction = "up")
 
 nyse <-
-  stocknames |> 
-  filter(exchcd==1) |>
+  stocknames |>
+  filter(exchcd == 1) |>
   select(permno, namedt, nameenddt) |>
-  compute()
+  collect()
 
 earn_annc_links <-
   earn_annc_dates |>
-  left_join(ccm_link, by = "gvkey", multiple = "all") |>
-  filter(datadate >= linkdt, 
-         rdq <= linkenddt | is.na(linkenddt)) |>
-  inner_join(nyse, by = "permno", multiple = "all") |>
-  filter(rdq >= namedt, rdq <= nameenddt) |>
-  select(gvkey, datadate, rdq, permno) |>
-  compute()
+  inner_join(ccm_link, join_by(gvkey, rdq >= linkdt, rdq <= linkenddt)) |>
+  semi_join(nyse, join_by(permno, rdq >= namedt, rdq <= nameenddt)) |>
+  select(gvkey, datadate, rdq, permno)
 
 earn_annc_windows <-
   earn_annc_dates |>
-  inner_join(annc_dates, by = c("rdq"="annc_date")) |>
-  mutate(start_td = td - days_before, 
+  inner_join(annc_dates, by = join_by(rdq == annc_date)) |>
+  mutate(start_td = td - days_before,
          end_td = td + days_after) |>
-  inner_join(trading_dates, by = c("start_td"="td")) |>
+  inner_join(trading_dates, by = join_by(start_td == td)) |>
   rename(start_date = date) |>
-  inner_join(trading_dates, by = c("end_td"="td")) |>
-  select(-start_td, -end_td) |>
+  inner_join(trading_dates, by = join_by(end_td == td)) |>
   rename(end_date = date,
          event_td = td) |>
-  compute()
+  select(-start_td, -end_td)
+
+first_return_date <- min(earn_annc_windows$start_date)
+last_return_date <- max(earn_annc_windows$end_date)
+
+mkt_rets <-
+  dsf |>
+  filter(date >= !!first_return_date, date <= !!last_return_date) |>
+  select(permno, date, ret, vol) |>
+  inner_join(dsi |> select(date, vwretd), by = "date") |>
+  mutate(ret_mkt = ret - vwretd) |>
+  select(permno, date, ret, ret_mkt, vol)
 
 earn_annc_window_permnos <-
   earn_annc_windows |>
-  inner_join(earn_annc_links, by = c("gvkey", "datadate", "rdq")) |>
-  compute()
+  inner_join(earn_annc_links, by = c("gvkey", "datadate", "rdq"))
 
 earn_annc_crsp <-
-  earn_annc_window_permnos |>
-  inner_join(mkt_rets, by = "permno") |>
-  filter(date >= start_date, date <= end_date) |>
+  mkt_rets |>
+  inner_join(copy_to(db, earn_annc_window_permnos),
+             join_by(permno,
+                     date >= start_date, date <= end_date)) |>
   select(gvkey, datadate, rdq, event_td, date, ret, ret_mkt, vol) |>
-  compute()
-```
+  collect()
 
-```{r ret_data}
-#| include: false
 earn_annc_rets <-
   earn_annc_crsp |>
   inner_join(trading_dates, by = "date") |>
-  mutate(relative_td = td - event_td) |>
-  compute()
-```
+  mutate(relative_td = td - event_td)
 
-```{r ret-data-vols}
-#| include: false
 earn_annc_vols <-
   earn_annc_rets |>
   group_by(gvkey, datadate) |>
   mutate(avg_vol = mean(vol, na.rm = TRUE)) |>
-  mutate(rel_vol = vol/avg_vol,
+  mutate(rel_vol = vol / avg_vol,
          year = year(datadate)) |>
-  ungroup() |>
-  compute()
-```
+  ungroup()
 
-```{r ret-summ}
-#| include: false
 earn_annc_summ <-
   earn_annc_vols |>
   group_by(relative_td, year) |>
@@ -189,23 +185,51 @@ earn_annc_summ <-
             sd_ret = sd(ret, na.rm = TRUE),
             sd_ret_mkt = sd(ret_mkt, na.rm = TRUE),
             mad_ret = mean(abs(ret), na.rm = TRUE),
-            mad_ret_mkt =  mean(abs(ret_mkt), na.rm = TRUE),
-            .groups = "drop") |>
-  collect()
+            mad_ret_mkt = mean(abs(ret_mkt), na.rm = TRUE),
+            .groups = "drop")
+```
+
+```{r}
+#| echo: false
+#| label: fig-sd-rets
+#| fig-height: 3
+#| fig-cap: "Residual return volatility around earnings announcements"
+#| fig-alt: "Plot of residual return volatility in days around earnings announcements. Each year from 2011 to 2018 is represented by a different line. Plot shows a clear spike in return volatility in days 0 and 1 relative to earnings announcements. Lines are indistinguishable from each other with the exception of 2015, which has high volatility throughout."
+earn_annc_summ |>
+  filter(year > 2010, year < 2019) |>
+  mutate(year = as.factor(year)) |>
+  ggplot(aes(x = relative_td, y = sd_ret_mkt,
+             group = year, colour = year,
+             linetype = year == 2015)) +
+  geom_line()
+```
+
+```{r}
+#| echo: false
+#| label: fig-rel-vols
+#| fig-height: 3
+#| fig-cap: "Relative trading volume around earnings announcements"
+#| fig-alt: "Plot of trading volume in days around earnings announcements. Each year from 2011 to 2018 is represented by a different line. Plot shows clear spike in trading volume in days 0 and 1 relative to earnings announcements. Lines are essentially indistinguishable from each other."
+earn_annc_summ |>
+  filter(year > 2010, year < 2019) |>
+  mutate(year = as.factor(year)) |>
+  ggplot(aes(x = relative_td, y = mean_rel_vol,
+             group = year, color = year)) +
+  geom_line()
 ```
 
 ## Discussion questions
 
-1. After reading @Bamber:2000wv, do the reasons given by @Beaver:1968vf for his sample selection criteria still seem reasonable? 
+1. After reading @Bamber:2000wv, do the reasons given by @Beaver:1968vf for his sample selection criteria still seem reasonable?
 Why or why not?
 
 2. @Bamber:2000wv do a replication and an extension of @Beaver:1968vf.
 Why was it important to include the replication?
-What alternative approaches to extension could @Bamber:2000wv have considered? 
+What alternative approaches to extension could @Bamber:2000wv have considered?
 Does it make sense to limit extensions to the sample period, available data, and methods of @Beaver:1968vf?
 What do you think of the claim that "the first research bricks [i.e., @Beaver:1968vf] affect the whole wall [of accounting research]"?
 
-3. What's the basic conclusion from the plots above in terms of whether "earnings announcements convey new information to the market"?
+3. What's the basic conclusion from Figures [-@fig-sd-rets] and [-@fig-rel-vols] in terms of whether "earnings announcements convey new information to the market"?
 Do the results support the conclusions made by subsequent researchers based on @Beaver:1968vf?
 Or do the concerns of @Bamber:2000wv remain applicable?
 
@@ -214,22 +238,20 @@ What are those differences?
 Do you expect these to materially affect the tenor of the results?
 Do the choices we made seem appropriate if we were writing a research paper?
 
-5. The plots above use *daily* data [@Beaver:1968vf used weekly data].
+5. Figures [-@fig-sd-rets] and [-@fig-rel-vols] use *daily* data [@Beaver:1968vf used weekly data].
 Apart from more **statistical power**, do the daily plots provide novel insights in this case?
 
 6. What does the variable `mad_ret_mkt` on the data frame `earn_annc_summ` represent?
 Do results look different if this variable is used?
 Does this address the first concern about research design that @Bamber:2000wv raise?
-If not, can you suggest (and apply) and alternative measure?
+If not, can you suggest (and apply) an alternative measure?
 
-7. In the plots above, two filters have been applied: `year > 2010` and `year < 2019)`.
+7. In Figures [-@fig-sd-rets] and [-@fig-rel-vols], two filters have been applied: `year > 2010` and `year < 2019`.
 Does it make sense to remove one or the other of these filters?
 What do you observe if you remove one or both of these?
 Can you explain these observations?
 
 ```{r}
 #| include: false
-dbDisconnect(db, shutdown = TRUE)
+dbDisconnect(db)
 ```
-
-## References
