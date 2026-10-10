@@ -6,13 +6,15 @@ bibliography: book.bib
 ---
 
 ```{r}
-#| message: false
 #| include: false
-library(tidyverse)
+#| message: false
+library(dplyr, warn.conflicts = FALSE)
 library(DBI)
-library(dbplyr)       # For window_order()
+library(dbplyr)
+library(ggplot2)
 library(farr)
 library(modelsummary)
+library(knitr)
 ```
 
 ## Overview
@@ -29,14 +31,22 @@ What features are present and what, if any, are missing?
 
 ### A small event study
 
-```{r apple_reg_data}
+```{r}
+#| label: database-connection
 #| include: false
 db <- dbConnect(duckdb::duckdb())
 
 stocknames <- load_parquet(db, schema = "crsp", table = "stocknames")
 dsf <- load_parquet(db, schema = "crsp", table = "dsf")
 dsi <- load_parquet(db, schema = "crsp", table = "dsi")
+idx_daily <- load_parquet(db, schema = "comp", table = "idx_daily")
+```
 
+```{r}
+#| label: apple-setup
+#| include: false
+#| cache: true
+#| cache.vars: [apple_permno, apple_data, rets]
 apple_permno <-
   stocknames |>
   filter(ticker == "AAPL") |>
@@ -56,35 +66,105 @@ apple_rets <-
 apple_event_dates <-
   apple_events |>
   mutate(permno = apple_permno) |>
-  get_event_dates(db, 
+  get_event_dates(db,
                   end_event_date = "end_event_date",
-                  win_start = -1, win_end = +1) 
+                  win_start = -1, win_end = +1)
 
-apple_reg_data <-
+apple_data <-
   apple_rets |>
-  left_join(apple_event_dates, 
+  left_join(apple_event_dates,
             join_by(permno, date >= start_date, date <= end_date)) |>
   mutate(is_event = !is.na(start_date)) |>
   select(permno, date, ret, ret_mkt, vol, is_event)
+
+rets <-
+  apple_events |>
+  mutate(permno = apple_permno) |>
+  get_event_cum_rets(db,
+                     win_start = -1, win_end = +1,
+                     end_event_date = "end_event_date")
 ```
 
 ```{r}
 #| echo: false
 #| label: fig-apple-rets
+#| fig-pos: H
+#| fig-height: 3
+#| warning: false
 #| fig-cap: Apple returns
-apple_reg_data |>  
+#| fig-alt: Cumulative Apple raw returns, with event and non-event periods distinguished by colour.
+apple_data |>
   arrange(date) |>
   mutate(cumret = cumprod(1 + coalesce(ret, 0)),
          switch = coalesce(is_event != lead(is_event), FALSE)) |>
   ggplot(aes(x = date, y = cumret)) +
   geom_line() +
   geom_ribbon(aes(ymax = if_else(!is_event | switch, cumret, NA),
-                  ymin = 0, 
-                  fill = "Non-event")) +
+                  ymin = 0, fill = "Non-event")) +
   geom_ribbon(aes(ymax = if_else(is_event | switch, cumret, NA),
-                  ymin = 0, 
-                  fill = "Event")) +
+                  ymin = 0, fill = "Event")) +
+  theme(legend.position = "inside", legend.position.inside = c(0.2, 0.8))
+```
+
+```{r}
+#| echo: false
+#| label: fig-apple-rets-zoom
+#| fig-pos: H
+#| fig-height: 3
+#| warning: false
+#| fig-cap: 'Apple returns: "Zoomed in"'
+#| fig-alt: Cumulative Apple raw returns, with event and non-event periods distinguished by colour.
+apple_data |>
+  arrange(date) |>
+  mutate(cumret = cumprod(1 + coalesce(ret, 0)),
+         switch = coalesce(is_event != lead(is_event), FALSE)) |>
+  filter(date >= "2020-09-01", date <= "2020-12-31") |>
+  ggplot(aes(x = date, y = cumret)) +
+  geom_line() +
+  geom_ribbon(aes(ymax = if_else(!is_event | switch, cumret, NA),
+                  ymin = 0, fill = "Non-event")) +
+  geom_ribbon(aes(ymax = if_else(is_event | switch, cumret, NA),
+                  ymin = 0, fill = "Event")) +
   theme(legend.position = "bottom")
+```
+
+```{r}
+#| include: false
+fms <- list("ret_mkt" = lm(ret_mkt ~ is_event, data = apple_data),
+            "abs(ret)" = lm(abs(ret) ~ is_event, data = apple_data),
+            "Volume" = lm(vol / mean(vol) ~ is_event, data = apple_data))
+```
+
+```{r}
+#| label: tbl-aapl
+#| tbl-pos: H
+#| tbl-cap: Regression analysis of Apple media events
+#| echo: false
+modelsummary(fms,
+             estimate = "{estimate}{stars}",
+             statistic = NULL,
+             gof_map = c("nobs", "r.squared"),
+             stars = c("*" = .1, "**" = .05, "***" = .01))
+```
+
+```{r}
+#| echo: false
+kable(as.data.frame(as.list(unclass(summary(rets$ret_mkt)))), digits = 4)
+kable(as.data.frame(table(rets$ret_mkt > 0)),
+      col.names = c("Positive market-adjusted return", "Events"))
+```
+
+```{r}
+#| echo: false
+#| label: fig-apple-rets-mkt
+#| fig-pos: H
+#| fig-height: 3
+#| fig-cap: Apple market-adjusted returns and media events
+#| fig-alt: "Plot of cumulative returns for Apple stock around periods involving Apple media events against the dates of those events. The mean of these returns is depicted as a horizontal line that is just below the x-axis."
+rets |>
+  ggplot(aes(x = event_date, y = ret_mkt)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y ~ 1")
 ```
 
 ### Exercises
@@ -92,11 +172,87 @@ apple_reg_data |>
 1. How would you expect the plot to change if we used `cumret = exp(cumsum(log(1 + coalesce(ret, 0))))` in place of `cumret = cumprod(1 + coalesce(ret, 0))` in creating the plot above?
 Is there any reason to prefer one calculation over time other?
 
-2. Do we get different results in this case if we use `cumret = cumprod(1 + ret)` (i.e., remove the `coalesce` function)?
+2. Do we get different results in this case if we use `cumret = cumprod(1 + ret)` (i.e., remove the `coalesce()` function)?
 If so, why?
 If not, would we always expect this to be case (e.g., for stocks other than Apple)?
 
 ## Event studies and regulation
+
+```{r}
+#| label: zhang-setup
+#| include: false
+#| cache: true
+#| cache.vars: [zhang_2007_res, sd_ret]
+dsi_local <-
+  dsi |>
+  select(date, vwretd, ewretd) |>
+  collect()
+
+can_rets <-
+  idx_daily |>
+  filter(gvkeyx == "000193") |>
+  window_order(datadate) |>
+  mutate(ret_can = if_else(lag(prccd) > 0, prccd/lag(prccd) - 1, NA)) |>
+  filter(datadate >= "2000-01-01", datadate <= "2002-12-31") |>
+  rename(date = datadate) |>
+  select(date, ret_can) |>
+  collect()
+
+reg_data <-
+  dsi_local |>
+  inner_join(can_rets, by = "date") |>
+  filter(date < "2001-12-28") |>
+  top_n(100, wt = date)
+
+fm_vw <- lm(vwretd ~ ret_can, data = reg_data)
+fm_ew <- lm(ewretd ~ ret_can, data = reg_data)
+
+dsi_merged <-
+  dsi_local |>
+  inner_join(can_rets, by = "date") |>
+  mutate(abret_vw = vwretd - predict(fm_vw, pick(everything())),
+         abret_ew = ewretd - predict(fm_ew, pick(everything()))) |>
+  select(-ret_can)
+
+sd_ret <-
+  dsi_local |>
+  filter(date < "2001-12-28") |>
+  top_n(100, wt = date) |>
+  summarize(sd(vwretd)) |>
+  pull()
+
+zhang_2007_rets <-
+  zhang_2007_windows |>
+  inner_join(dsi_merged, join_by(beg_date <= date, end_date >= date)) |>
+  group_by(event) |>
+  summarize(n_days = n(),
+            vwret = sum(vwretd),
+            ewret = sum(ewretd),
+            abret_vw = sum(abret_vw),
+            abret_ew = sum(abret_ew),
+            vw_t = vwret / (sqrt(n_days) * sd_ret),
+            ew_t = ewret / (sqrt(n_days) * sd_ret),
+            abret_vw_t = abret_vw / (sqrt(n_days) * sd(fm_vw$residuals)),
+            abret_ew_t = abret_ew / (sqrt(n_days) * sd(fm_ew$residuals)))
+
+zhang_2007_res <-
+  zhang_2007_rets |>
+  filter(abs(vw_t) > abs(qnorm(.05))) |>
+  summarize(vwret = sum(vwret),
+            ewret = sum(ewret),
+            abret_vw = sum(abret_vw),
+            abret_ew = sum(abret_ew),
+            n_days = sum(n_days),
+            vw_t = vwret / (sqrt(n_days) * sd_ret),
+            ew_t = ewret / (sqrt(n_days) * sd_ret),
+            abret_vw_t = abret_vw / (sqrt(n_days) * sd(fm_vw$residuals)),
+            abret_ew_t = abret_ew / (sqrt(n_days) * sd(fm_ew$residuals)))
+```
+
+The book's illustration gives cumulative raw value-weighted returns of `r round(100 * zhang_2007_res$vwret, 2)`% ($t = `r round(zhang_2007_res$vw_t, 2)`$) and abnormal value-weighted returns of `r round(100 * zhang_2007_res$abret_vw, 2)`% ($t = `r round(zhang_2007_res$abret_vw_t, 2)`$).
+The daily raw-return standard deviation used here is `r round(100 * sd_ret, 3)`%.
+The Toronto composite is an accessible proxy for the Canadian benchmark, rather than Zhang's portfolio excluding US-traded firms.
+These calculations illustrate the procedure and do not exactly replicate her returns or bootstrap tests.
 
 ### Discussion questions
 
@@ -104,13 +260,13 @@ If not, would we always expect this to be case (e.g., for stocks other than Appl
 
 1. What are the relative merits of raw and abnormal returns in evaluating the effect of SOX on market values of US firms?
 What do you observe in the raw returns for Canada, Europe, and Asia for the four events that are the focus of Panel B of Table 2 of @Zhang:2007tv?
-Does this raise concerns about @Zhang:2007tv's results?
+Does this raise concerns about the results of @Zhang:2007tv?
 
 2. Describe the process for constructing the test statistics reported in Panel D of Table 2.
 How compelling are these results?
 Do you agree with the assessment by @Leuz:2007tj [p. 150] that @Zhang:2007tv is "very careful in assessing the significance of the event returns"?
 
-3. Describe in detail how you might conduct statistical inference using **randomization inference** in the setting of (see Section \@ref(fhk-inference) for more on this approach)?
+3. Describe in detail how you might conduct statistical inference using **randomization inference** in the setting of @Zhang:2007tv (see [the book's randomization-inference discussion](https://iangow.github.io/far_book/natural-revisited.html#sec-fhk-inference) for more on this approach)?
 What are the challenges faced and design choices you need to make in applying this approach?
 Does your approach differ from the bootstrapping approach used in @Zhang:2007tv?
 
@@ -118,23 +274,29 @@ Does your approach differ from the bootstrapping approach used in @Zhang:2007tv?
 How can these sets of results be reconciled?
 What steps would you look to undertake to evaluate the conflicting claims of the two papers?
 
+```{=latex}
+\clearpage
+```
+
 #### @Khan:2017wa
 
-1. What is the research question examined in @Khan:2017wa? (Hint: Read the title.)
+1. What is the research question examined in @Khan:2017wa? (*Hint*: Read the title.)
 
 2. @Khan:2017wa [p. 210] argue that "an ideal research design to evaluate the benefits of accounting standards is to compare a voluntary disclosure regime, in which firms disclose information required by a particular standard, with a mandatory disclosure regime, in which firms are required to disclose that same information."
-Do you agree that this research design would be "ideal" to address the question? What is the implied treatment in this ideal design?
+Do you agree that this research design would be "ideal" to address the question?
+What is the implied treatment in this ideal design?
 
-3. Compare the Apple event study above with @Khan:2017wa. 
+3. Compare the Apple event study above with @Khan:2017wa.
 What are the relative strengths and weaknesses of the two studies?
-Do you think an event-study approach is appropriate for addressing the question "do Apple products add value?" 
-Do you think an event-study approach is appropriate for addressing the research question of @Khan:2017wa? 
+Do you think an event-study approach is appropriate for addressing the question "do Apple products add value?"
+Do you think an event-study approach is appropriate for addressing the research question of @Khan:2017wa?
 Why or why not?
 
 4. Do you think that standard-setters would view "reduction in estimation risk" as a goal of accounting standards?
 Evaluate the quality of the arguments linking improved standards to reduced estimation risk.
-The null hypothesis for Panel A is that the CAR of affected firms is not different from CAR of unaffected firms. 
-How appropriate is it to report "most negative" and "most positive" CAR differences only? (Hint: If the null hypothesis is true, how many standards might you expect to have "statistically significant" coefficients?)
+The null hypothesis for Panel A is that the CAR of affected firms is not different from CAR of unaffected firms.
+How appropriate is it to report "most negative" and "most positive" CAR differences only?
+(*Hint*: If the null hypothesis is true, how many standards might you expect to have "statistically significant" coefficients?)
 
 5. Interpret the results of Table 5, Panel B of @Khan:2017wa.
 
@@ -143,7 +305,7 @@ How appropriate is it to report "most negative" and "most positive" CAR differen
 1. How do LOT and FFJR differ in terms of the role of market efficiency in their research designs?
 
 2. Consider Table 1 of LOT.
-What are the differences between the event study design in LOT from that in FFJR? 
+What are the differences between the event study design in LOT from that in FFJR?
 What are implications of these differences?
 
 3. How do you think Table 1 was developed?
@@ -152,14 +314,14 @@ Can you suggest alternative approaches to developing Table 1?
 
 4. Consider proxy access, as some of the core results of the paper relate to proxy access.
 If you were a shareholder in a company, what concerns might you have about proxy access?
-Why might this decrease the value of your shares? 
+Why might this decrease the value of your shares?
 Think about this is concrete terms; be specific about the kinds of circumstances where value will be reduced.
-How well do the variables *NLargeBlock* and *NSmallCoalitions* measure the exposure of firms to the issues you identified in the previous question? 
+How well do the variables *NLargeBlock* and *NSmallCoalitions* measure the exposure of firms to the issues you identified in the previous question?
 (As part of this, consider the timing of variable measurement relative to the timing of possible value-reducing outcomes.)
 
 5. LOT makes use of a number of **Monte Carlo simulations**.
 How do these compare with the bootstrapping analyses conducted by @Zhang:2007tv?
-Are the simulation addressing the same underlying issues as @Zhang:2007tv bootstrapping approach?
+Are the simulations addressing the same underlying issues as @Zhang:2007tv bootstrapping approach?
 
 ```{r}
 #| include: false
