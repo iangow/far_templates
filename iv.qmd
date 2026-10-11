@@ -1,5 +1,5 @@
 ---
-title: "Exercise template for 'Instrumental variables '"
+title: "Exercise template for 'Instrumental variables'"
 author: Your name
 format: html
 bibliography: book.bib
@@ -9,11 +9,10 @@ bibliography: book.bib
 #| label: setup
 #| include: true
 #| cache: false
-#| echo: true
 #| message: false
 library(dplyr, warn.conflicts = FALSE)
-library(fixest)     # feols(), including IV regressions
 library(modelsummary)
+library(fixest)
 ```
 
 ## Discussion questions
@@ -21,30 +20,35 @@ library(modelsummary)
 1. In the 1960s and early 1970s, American men were at risk of being drafted for military service. 
 Each year from 1970 to 1972, draft eligibility was prioritized based on the results of a lottery over birthdays. 
 A random number was assigned to the birthdays of 19-year-olds. 
-Those whose birthday was associated with a random number below the cut-off were draft-eligible; the other 19-year-olds were not draft-eligible. 
+Those whose birthday was associated with a random number below the cutoff were draft-eligible; the other 19-year-olds were not draft-eligible.
 @Angrist:2008vk point out that, "in practice, many draft-eligible men were still exempted from service for health or other reasons, while many men who were draft-exempt nevertheless volunteered for service."
-Using an indicator for draft lottery number being below the cut-off as an instrumental variable, @Angrist:1990dk finds that those who served in Vietnam earned significantly less than their peers even in 1981. 
+Using an indicator for draft lottery number being below the cutoff as an instrumental variable, @Angrist:1990dk finds that those who served in Vietnam earned significantly less than their peers even in 1981.
 Try to draw the causal diagram for this analysis and apply the three questions outlined above to this setting. 
 What assumptions are needed for the answer to each question to be "yes"? 
 How might these assumptions be violated?
-2.	@Ahern:2012kca study a rule requiring firms in Norway to appoint female directors "use the pre-quota cross-sectional variation in female board representation to instrument for exogenous changes to corporate boards following the quota."
-What is the role of the discussion on p.145 suggesting that "the quota was implemented without the consent of business leaders"?
-What about the discussion on p.155 suggesting that the rule was not anticipated?
-3.	You and a co-author are interested in studying the effect of independent directors on financial reporting quality. 
+
+2. @Ahern:2012kca study a rule requiring firms in Norway to appoint female directors and "use the pre-quota cross-sectional variation in female board representation to instrument for exogenous changes to corporate boards following the quota."
+What is the significance of the discussion suggesting that "the quota was implemented without the consent of business leaders" [-@Ahern:2012kca, p. 145]?
+What about the discussion [-@Ahern:2012kca, p. 155] suggesting that the rule was not anticipated?
+
+3. You and a co-author are interested in studying the effect of independent directors on financial reporting quality.
 You conjecture that independent directors demand better financial reporting, as they are less likely to benefit from obfuscation of performance than non-independent directors, who are often employees of the firm. 
 However, you are concerned that causation may run in the opposite direction; firms with better financial reporting quality may have more independent directors on their boards. 
 Provide some arguments for the existence of reverse causation. 
 How persuasive do you find these arguments?
+
 4. In response to a request by the SEC in February 2002, the major US exchanges (NYSE and Nasdaq) proposed changes to listing standards that would require firms to have a majority of independent directors. 
 In 2003, the SEC approved these changes and required that firms comply by the earlier of (i) the first annual shareholder meeting after January 15, 2004 and (ii) October 31, 2004. 
 Your co-author argues that this change was "exogenous", as it was not driven by the decisions of individual firms, and this fact allows you to estimate a causal effect.
-  - Does "exogeneity" as used by your co-author mean the same thing as exogeneity for the purposes of econometric  analysis? 
-  Does the former notion imply the latter? 
-  Think of "examples" to support your arguments (examples could include a simple model, a numerical argument, or purely verbal descriptions of real or imagined scenarios).
-  - More specifically, your co-author argues that the change in the number of independent directors imposed on the firm by the new rules is exogenous and thus could be used as an instrument for your study.
-  @Armstrong:2014aa examine the changes in listing standards above and use "the minimum required percentage change in independent directors, `Min % change ID`, as an instrument" in studying the effect of independent directors on firm transparency. 
-  What are the parallels between the setting of @Armstrong:2014aa and that of Ahern and Dittmar (2016)? 
-  Do the two papers use the same basic approach, or are there important differences between their approaches?
+
+   Does "exogeneity" as used by your co-author mean the same thing as exogeneity for the purposes of econometric  analysis?
+   Does the former notion imply the latter?
+   Think of "examples" to support your arguments (an example could be a simple model, a numerical argument, or a verbal description of a real or imagined scenario).
+
+   More specifically, your co-author argues that the change in the number of independent directors imposed on the firm by the new rules is exogenous and thus could be used as an instrument for your study.
+   @Armstrong:2014aa examine the changes in listing standards above and use "the minimum required percentage change in independent directors, `Min % change ID`, as an instrument" in studying the effect of independent directors on firm transparency.
+   What are the parallels between the setting of @Armstrong:2014aa and that of @Ahern:2012kca?
+   Do the two papers use the same basic approach, or are there important differences between their approaches?
 
 5. The objective of @Cohen:2013uc "is to investigate how governance regulations in SOX and the exchanges are associated with chief executive officers' incentives and risk-taking behavior."
 What is the treatment of interest in @Cohen:2013uc?
@@ -57,6 +61,9 @@ What does the implied causal diagram look like?
 How persuasive do you find the approach of @Cohen:2013uc to be?
 
 ```{r}
+#| label: sneetch-data
+#| cache: true
+#| cache.vars: ["n", "max_d", "z", "a", "gamma", "b", "alpha", "beta", "sd_epsilon", "d_opt_fun", "df", "min_d", "df_1"]
 #| lst-label: lst-sneetches
 #| lst-cap: Code to generate the Sneetch world
 # Set parameters
@@ -112,13 +119,13 @@ There are two kinds of Sneetches:
 
    The value of firm $i$ at time $t=0$ is given by the equation:
    $$ V_{i0} = \alpha + \beta \times b_i + \epsilon_0 $$
-   where $\alpha = `r alpha`$, $\beta = `r beta`$ and $\epsilon \sim N(0, \sigma_{\epsilon})$, where $\sigma_{\epsilon} = `r sd_epsilon`$.
+   where $\alpha = `r alpha`$, $\beta = `r beta`$ and $\epsilon \sim N(0, \sigma_{\epsilon}^2)$, where $\sigma_{\epsilon} = `r sd_epsilon`$.
 \newline
 \newline
    The Sneetches then pass new legislation requiring every board to have at least three Plain-Belly directors at time $t=1$.
    The value of firm $i$ at time $t=1$ is given by the equation:
    $$ V_{i1} = \alpha + \beta \times b_i + \epsilon_{i1} $$
-   The code in @lst-sneetches starts by setting the parameters discussed above and generating $\gamma_i$ (`gamma`).
+   The code in @lst-sneetches starts by setting the parameters discussed above and generating $z_i$ (`z`).
    The code then generates the value of each of the `r prettyNum(n, big.mark = ",")` firms at time $t=0$ (`V_0`), as well as the number of Plain-Belly directors  chosen by each firm at $t=0$ to maximize $v_i(\cdot)$ (`d_0`).
    These values are stored in `df`.
 
