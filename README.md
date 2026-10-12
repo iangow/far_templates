@@ -4,7 +4,7 @@ This page provides Quarto templates for use with the course book [Empirical Rese
 
 To use a template, you will need [Quarto](https://quarto.org).
 A recent installation of [RStudio](https://posit.co/downloads/) will include Quarto.
-See instructions [here](https://iangow.github.io/far_book/intro.html#install) for setting up your computer to use this course book.
+See instructions [here](https://iangow.github.io/far_book/intro.html#sec-install) for setting up your computer to use this course book.
 
 To download a template, simply "right click" a link below and save the template on your computer, then open it on your computer.
 
@@ -16,7 +16,7 @@ Instructors can contact [Ian Gow](mailto:iandgow@gmail.com) for these solutions.
 Each template below shares its name with the corresponding chapter in the [book](https://iangow.github.io/far_book/).
 
 For chapters of the book that use the WRDS PostgreSQL database, we have also included a template that uses a local parquet repository as described in [an appendix](https://iangow.github.io/far_book/parquet-wrds.html) of the book.
-To use these templates, you simply need to have downloaded the needed parquet files and edit the line in the template to set `DATA_DIR` to the location of these files on your hard drive.
+To use these templates, you simply need to have downloaded the needed parquet files and set the `DATA_DIR` environment variable to the location of these files on your hard drive, as described in that appendix.
 
 ### Part I: Foundations
 
@@ -27,8 +27,8 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Causal inference | [causal-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/causal-inf.qmd) | Use PostgreSQL template |
 | Statistical inference  | [stat-inf.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/stat-inf.qmd) | Use PostgreSQL template |
 | Financial statements: A first look | [fin-state.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state.qmd) | [fin-state-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-pq.qmd) |
-| Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) | 
-| Linking databases |  [identifiers.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers.qmd) | [identifiers-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers-pq.qmd) | 
+| Linking databases |  [identifiers.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers.qmd) | [identifiers-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/identifiers-pq.qmd) |
+| Financial statements: A second look | [fin-state-reprise.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise.qmd) | [fin-state-reprise-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/fin-state-reprise-pq.qmd) |
 | Importing data | [web-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/web-data.qmd) | Use PostgreSQL template |
 
 ### Part II: Capital markets research
@@ -53,7 +53,7 @@ To use these templates, you simply need to have downloaded the needed parquet fi
 | Instrumental variables | [iv.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/iv.qmd)  | Use PostgreSQL template |
 | Panel data | [panel-data.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data.qmd) |[panel-data-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/panel-data-pq.qmd) |
 | Regression discontinuity designs | [rdd.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd.qmd) | [rdd-pq.qmd](https://raw.githubusercontent.com/iangow/far_templates/main/rdd-pq.qmd) |
- 
+
 ### Part IV: Additional topics
 
 | Chapter | PostgreSQL template | Parquet template |
