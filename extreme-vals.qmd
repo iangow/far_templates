@@ -30,20 +30,21 @@ options(tibble.width = 75)
 
 ### Discussion questions
 
-1.  Table 5 of @Leone:2019uc presents results from a simulation analysis.
-    Which panel of that table likely best reflects the kind of data researchers encounter in practice?
+1. Table 5 of @Leone:2019uc presents results from a simulation analysis.
+Which panel of that table likely best reflects the kind of data researchers encounter in practice?
 
-2.  Consider the left half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0.8$).
-    Using the panel you identified in question 1 above, interpret the implications of the simulation results for researchers in practice.
-    Note that the mean estimates of $\beta_1$ using Cook's D or robust regression are very similar.
-    Does Table 5 of @Leone:2019uc provide strong support for rejecting Cook's D in favour of robust regression?
+2. Consider the left half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0.8$).
+Using the panel you identified in question 1 above, interpret the implications of the simulation results for researchers in practice.
+Note that the mean estimates of $\beta_1$ using Cook's D or robust regression are very similar.
+Does Table 5 of @Leone:2019uc provide strong support for rejecting Cook's D in favour of robust regression?
     
-3.  In the search for new research questions, accounting researchers increasingly need to study variables whose most plausible effect sizes are consistent with the right half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0$).
-    Using the panel you identified in question 1 above, interpret the implication of the simulation results for researchers in practice.
+3. In the search for new research questions, accounting researchers increasingly need to study variables whose most plausible effect sizes are consistent with the right half of Table 5 of @Leone:2019uc (i.e., $\beta_1 = 0$).
+Using the panel you identified in question 1 above, interpret the implication of the simulation results for researchers in practice.
 
-4.  Table 2 of @Leone:2019uc reports results similar to those given in columns (4), (5), and (6) of Table 24.1.
-    They say, "\[when we\] perform estimation using RR, the coefficient on $BIG\_N$ is $-0.011$ (significant at the 1 percent level), opposite of what @Chen:2018wh find, and instead consistent with the negative coefficient documented in prior studies using the two-step procedure." In light of the simulation evidence, how persuasive do you find the evidence above in support of a negative coefficient on `big_n`?
-    How probative is the evidence of prior studies if it is based on approaches (e.g., winsorization and two-step procedures) that @Leone:2019uc and @Chen:2018wh demonstrate lead to unreliable results?
+4. Table 2 of @Leone:2019uc reports results similar to those given in columns (4), (5), and (6) of [the book's replication table](https://iangow.github.io/far_book/extreme-vals.html#tbl-leone-repl).
+They say, "[when we] perform estimation using RR, the coefficient on $BIG\_N$ is $-0.011$ (significant at the 1 percent level), opposite of what @Chen:2018wh find, and instead consistent with the negative coefficient documented in prior studies using the two-step procedure."
+In light of the simulation evidence, how persuasive do you find the evidence above in support of a negative coefficient on `big_n`?
+How probative is the evidence of prior studies if it is based on approaches (e.g., winsorization and two-step procedures) that @Leone:2019uc and @Chen:2018wh demonstrate lead to unreliable results?
 
 ## @Call:2018aa
 
@@ -63,8 +64,7 @@ cmsw_2018 |>
             .groups = "drop") |>
   mutate(top_perc = round(total_top / total * 100, 1),
          across(total:total_top, \(x) round(x, 0))) |>
-  knitr::kable(digits = 3, format.args = list(big.mark = ','),
-                format = "latex", booktabs = TRUE, position = "!t")
+  knitr::kable(digits = 3, format.args = list(big.mark = ','))
 ```
 
 ```{r}
@@ -129,23 +129,25 @@ modelsummary(map(fms, get_coefs),
 
 ### Discussion questions
 
-1.  Suppose you were a regulator interested in understanding the effects of whistleblowers on enforcement outcomes.
-    How might you design an experiment to examine these effects?
-    What challenges would you expect to face in implementing your experiment?
-    How would the experiment be different from the setting of @Call:2018aa?
+1. Suppose you were a regulator interested in understanding the effects of whistleblowers on enforcement outcomes.
+How might you design an experiment to examine these effects?
+What challenges would you expect to face in implementing your experiment?
+How would the experiment differ from the setting of @Call:2018aa?
 
-2.  As an additional example of "misunderstanding" by @Kuvvet:2019aa, @call2019response claim that "Kuvvet argues that CMSW's findings speak to correlation rather than causation. The published version of CMSW makes this point clearly throughout the paper." What claim in @Kuvvet:2019aa are @call2019response addressing here?
-    Do you agree that "CMSW makes this point clearly throughout the paper"?
+2. As an additional example of "misunderstanding" by @Kuvvet:2019aa, @call2019response claim that "Kuvvet argues that CMSW's findings speak to correlation rather than causation.
+The published version of CMSW makes this point clearly throughout the paper."
+What claim in @Kuvvet:2019aa are @call2019response addressing here?
+Do you agree that "CMSW makes this point clearly throughout the paper"?
 
-3.  "The published version of CMSW empirically addresses the role of extreme observations in enforcement actions with an estimator designed specifically to handle skewed data (Poisson pseudo-maximum likelihood) and with additional robustness tests, including one focused on the incidence rather than the magnitude of penalties."
-    As we see in @tbl-cmsw-4, the estimator used in @Call:2018aa is standard Poisson regression, which is called in R using the `glm()` function with `family = "poisson"`.
-    How might we use data sets covered in Section 24.1 or Section 24.4 to evaluate the claim that Poisson regression estimator is "designed specifically to handle skewed data"?
+3. "The published version of CMSW empirically addresses the role of extreme observations in enforcement actions with an estimator designed specifically to handle skewed data (Poisson pseudo-maximum likelihood) and with additional robustness tests, including one focused on the incidence rather than the magnitude of penalties."
+As we see in @tbl-cmsw-4, the estimator used in @Call:2018aa is standard Poisson regression, which is called in R using the `glm()` function with `family = "poisson"`.
+How might we use data sets covered in @sec-leone or [the book's simulation section](https://iangow.github.io/far_book/extreme-vals.html#sec-leone-sims) to evaluate the claim that the Poisson regression estimator is "designed specifically to handle skewed data"?
 
-4.  Could we use approaches covered in Section 24.1 or Section 24.4 to address extreme observations in the setting of @Call:2018aa?
+4. Could we use approaches covered in @sec-leone or [the book's simulation section](https://iangow.github.io/far_book/extreme-vals.html#sec-leone-sims) to address extreme observations in the setting of @Call:2018aa?
 
-5.  @call2019response argue that "unlike many other settings in accounting, finance, and economics where the focus is often on the average firm, the enforcement action setting is inherently extreme" and claim that this is another example of "misunderstanding" in @Kuvvet:2019aa. Do you agree that "the enforcement action setting is inherently extreme"? Does this inherent extremeness undermine the arguments of @Kuvvet:2019aa?
+5. @call2019response argue that "unlike many other settings in accounting, finance, and economics where the focus is often on the average firm, the enforcement action setting is inherently extreme" and claim that this is another example of "misunderstanding" in @Kuvvet:2019aa.
+Do you agree that "the enforcement action setting is inherently extreme"?
+Does this inherent extremeness undermine the arguments of @Kuvvet:2019aa?
 
-6.  What claim by @Kuvvet:2019aa are @call2019response trying to refute regarding the "tipster" variable?
-    Do you find this response convincing?
-    
-## References {.unnumbered}
+6. What claim by @Kuvvet:2019aa are @call2019response (quoted above) trying to refute regarding the "tipster" variable?
+Do you find their response convincing?

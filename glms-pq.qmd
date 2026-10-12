@@ -10,6 +10,7 @@ bibliography: book.bib
 #| include: false
 library(tidyverse)
 library(DBI)
+library(dbplyr)       # window_order()
 library(farr)
 library(modelsummary)
 library(arrow)         # write_parquet(), read_parquet()
@@ -19,6 +20,15 @@ library(lmtest)        # coeftest()
 library(sandwich)      # vcovHC()
 library(httr2)         # request(), req_*(), resp_body_html()
 library(rvest)         # html_elements(), html_table()
+```
+
+```{r}
+#| label: glms-sum-true
+#| include: false
+#| cache: false
+sum_true <- function(x) {
+  sum(as.integer(x), na.rm = TRUE)
+}
 ```
 
 ```{r}
@@ -51,7 +61,7 @@ Provide arguments for and against the inclusion of *ROA*, *SpecialItems* and *Lo
 When might you expect these changes to have the opposite sign?
 
 4. @Guay:2016aa [p. 234] conclude that "collectively, these findings suggest managers use voluntary disclosure to mitigate the negative effects of complex financial statements on the information environment."
-Suppose you wanted to design a field experiment to test the propositions embedded in this sentence and we given the support of a regulator to do so (e.g., you can randomize firms to different regimes, as was done with Reg SHO).
+Suppose you wanted to design a field experiment to test the propositions embedded in this sentence and were given the support of a regulator to do so (e.g., you can randomize firms to different regimes, as was done with Reg SHO discussed in [Reg SHO in the book](https://iangow.github.io/far_book/natural-revisited.html#sec-reg-sho)).
 How would you implement this experiment?
 What empirical tests would you use?
 Are some elements of the hypothesis more difficult than others to test?
@@ -62,16 +72,26 @@ What do you think best explains any differences?
 
 ## Application: Complexity and voluntary disclosure
 
+The application uses the CSV, SEC indexes and derived inputs prepared in [the book's data-collection section](https://iangow.github.io/far_book/glms.html#sec-rep-cmplx).
+The optional preparation code below is retained in the source; set `build_inputs = TRUE` to run it when starting with the required raw data.
+For routine runs, it reuses the event-date, trading-date and liquidity files, constructs voluntary-disclosure counts from the source SEC indexes, and prepares current Compustat controls.
+
+
 ```{r}
 #| label: get_mfx
-#| cache: true
+#| cache: false
 #| include: false
 get_mfx <- function(fm, type) {
   pdf <- 
-    case_when(type == "probit" ~ mean(dnorm(predict(fm, type = "link"))),
-              type == "logit" ~ mean(dlogis(predict(fm, type = "link"))),
-              type == "Poisson" ~ mean(predict(fm, type = "response")),
-              type == "OLS" ~ 1)
+    if (type == "probit") {
+      mean(dnorm(predict(fm, type = "link")))
+    } else if (type == "logit") {
+      mean(dlogis(predict(fm, type = "link")))
+    } else if (type == "Poisson") {
+      mean(predict(fm, type = "response"))
+    } else {
+      1
+    }
   mfx <- pdf * coef(fm)
   mfx
 }
@@ -81,6 +101,7 @@ get_mfx <- function(fm, type) {
 #| include: false
 save_parquet <- function(df, name, schema = "", path = data_dir) {
   file_path <- file.path(path, schema, str_c(name, ".parquet"))
+  dir.create(dirname(file_path), showWarnings = FALSE, recursive = TRUE)
   write_parquet(collect(df), sink = file_path)
 }
 ```
@@ -89,7 +110,8 @@ save_parquet <- function(df, name, schema = "", path = data_dir) {
 #| eval: true
 #| include: false
 data_dir <- Sys.getenv("DATA_DIR")
-if (!dir.exists(data_dir)) dir.create(data_dir)
+stopifnot(nzchar(data_dir))
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
 ```
 
 ```{r}
@@ -100,15 +122,16 @@ if (!dir.exists(project_dir)) dir.create(project_dir)
 
 ```{r}
 #| include: false
-#| message: false
-drive_deauth()
 lm_data <- file.path(project_dir, "lm_10x_summary.csv")
-id <- "1puReWu4AMuV0jfWTrrf8IbzNNEU6kfpo"
-if (!file.exists(lm_data)) drive_download(as_id(id), lm_data)
+lm_10x_summary_sql <- str_c("SELECT * FROM read_csv('", lm_data, "')")
+convert_names <- function(df) rename_with(df, tolower)
+build_inputs <- FALSE
 ```
 
 ```{r}
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 convert_names <- function(df) {
@@ -138,7 +161,7 @@ options(HTTPUserAgent = "your_name@email.com")
 
 ```{r}
 #| label: get_sec_index
-#| cache: true
+#| cache: false
 #| include: false
 get_sec_index <- function(year, quarter, overwrite = FALSE) {
 
@@ -158,10 +181,10 @@ get_sec_index <- function(year, quarter, overwrite = FALSE) {
   if (!inherits(result, "try-error")) {
     temp <-
       read_fwf(t, fwf_cols(company_name = c(1, 62),
-                           form_type = c(63, 74),
-                           cik = c(75, 86),
-                           date_filed = c(87, 98),
-                           file_name = c(99, 150)),
+                           form_type = c(63, 77),
+                           cik = c(78, 89),
+                           date_filed = c(90, 101),
+                           file_name = c(102, NA)),
                col_types = "ccicc", skip = 10,
                locale = locale(encoding = "macintosh")) |>
       mutate(date_filed = as.Date(date_filed))
@@ -176,8 +199,9 @@ get_sec_index <- function(year, quarter, overwrite = FALSE) {
 
 ```{r}
 #| label: index_files_to_get
-#| cache: true
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 now <- now(tz = 'America/New_York') - days(1)
 current_year <- as.integer(year(now))
 current_qtr <- quarter(now)
@@ -187,20 +211,21 @@ quarter <- 1:4L
 index_files_to_get <-
   crossing(year, quarter) |>
   filter(year < current_year |
-           (year == current_year & quarter <= current_qtr)) 
+           (year == current_year & quarter <= current_qtr))
 ```
 
 ```{r}
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 edgar_dir <- file.path(data_dir, "edgar")
 if (!dir.exists(edgar_dir)) dir.create(edgar_dir)
 ```
 
 ```{r}
 #| include: false
-#| cache: true
-#| output: false
-#| dependson: index_files_to_get, get_sec_index
+#| eval: !expr build_inputs
+#| cache: false
 index_files_downloaded <-
   index_files_to_get |>
   mutate(available = map2(year, quarter, get_sec_index))
@@ -208,6 +233,8 @@ index_files_downloaded <-
 
 ```{r}
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 lm_10x_summary <- load_parquet(db, "lm_10x_summary", schema = "glms")
@@ -228,6 +255,8 @@ dbDisconnect(db)
 ```{r}
 #| warning: false
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 sec_index <- load_parquet(db, "sec_index*", "edgar")
 
@@ -243,22 +272,25 @@ vdis_df <-
   rename(fdate = filing_date) |>
   mutate(fdate_p1 = fdate + years(1L),
          fdate_m1 = fdate - years(1L)) |>
-  inner_join(filing_8k, 
+  left_join(filing_8k,
              join_by(cik, 
                      between(y$date_8k, x$fdate_m1, x$fdate_p1))) |>
   mutate(datediff = as.double(date_8k - fdate)) |>
+  mutate(vdis_p1y = datediff > 0,
+         vdis_p30 = between(datediff, 0, 30),
+         vdis_p60 = between(datediff, 0, 60),
+         vdis_p90 = between(datediff, 0, 90),
+         vdis_m1y = datediff < 0,
+         vdis_m30 = between(datediff, -30, -1),
+         vdis_m60 = between(datediff, -60, -1),
+         vdis_m90 = between(datediff, -90, -1)) |>
   group_by(acc_num, gvkey, iid, cik) |>
-  summarize(vdis_p1y = sum(as.integer(datediff > 0)),
-            vdis_p30 = sum(as.integer(between(datediff, 0, 30))),
-            vdis_p60 = sum(as.integer(between(datediff, 0, 60))),
-            vdis_p90 = sum(as.integer(between(datediff, 0, 90))),
-            vdis_m1y = sum(as.integer(datediff < 0)),
-            vdis_m30 = sum(as.integer(between(datediff, -30, -1))),
-            vdis_m60 = sum(as.integer(between(datediff, -60, -1))),
-            vdis_m90 = sum(as.integer(between(datediff, -90, -1))),
+  summarize(across(starts_with("vdis_"), !!sum_true),
             .groups = "drop") |>
+  mutate(across(starts_with("vdis_"), \(x) coalesce(x, 0L))) |>
   group_by(acc_num, gvkey, iid) |>
-  filter(vdis_p1y == max(vdis_p1y, na.rm = TRUE)) |>
+  window_order(desc(vdis_p1y), cik) |>
+  filter(row_number() == 1L) |>
   ungroup() |>
   save_parquet(name = "vdis_df", schema = "glms") 
 
@@ -267,6 +299,8 @@ dbDisconnect(db)
 
 ```{r}
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 funda <- load_parquet(db, schema = "comp", table = "funda")
@@ -291,17 +325,13 @@ compustat <-
 dbDisconnect(db)
 ```
 
-```{r}
-#| include: false
-need_eds <- !file.exists(file.path(Sys.getenv("DATA_DIR"), 
-                                   "glms", "event_dates.parquet"))
-```
+
 
 ```{r}
-#| eval: false
 #| results: false
-#| cache: false
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 ccmxpf_lnkhist <- load_parquet(db, schema = "crsp", table = "ccmxpf_lnkhist")
@@ -327,7 +357,7 @@ event_dates <-
   filing_permnos |>
   distinct(permno, filing_date) |>
   collect() |>
-  get_event_dates(pg, permno = "permno", 
+  get_event_dates(db, permno = "permno",
                   event_date = "filing_date",
                   win_start = -20, win_end = 20) |>
   copy_to(db, df = _, name = "event_dates", overwrite = TRUE) |>
@@ -337,16 +367,13 @@ event_dates <-
 dbDisconnect(db)
 ```
 
-```{r}
-#| include: false
-need_tds <- !file.exists(file.path(Sys.getenv("DATA_DIR"), "glms", "trading_dates.parquet"))
-```
+
 
 ```{r}
-#| eval: !expr need_tds
 #| include: false
-#| cache: false
 #| results: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(RPostgres::Postgres())
 
 trading_dates <- 
@@ -356,14 +383,12 @@ trading_dates <-
 dbDisconnect(db)
 ```
 
-```{r}
-#| include: false
-need_liquidity <- !file.exists(file.path(Sys.getenv("DATA_DIR"), "glms", "liquidity.parquet"))
-```
+
 
 ```{r}
-#| eval: true
 #| include: false
+#| eval: !expr build_inputs
+#| cache: false
 db <- dbConnect(duckdb::duckdb())
 
 dsf <- load_parquet(db, schema = "crsp", table = "dsf")
@@ -397,16 +422,84 @@ dbDisconnect(db)
 
 ```{r}
 #| include: false
+raw_db <- dbConnect(duckdb::duckdb())
+funda <- load_parquet(raw_db, schema = "comp", table = "funda")
+
+compustat_local <-
+  funda |>
+  filter(indfmt == "INDL", datafmt == "STD", popsrc == "D", consol == "C") |>
+  mutate(mkt_cap = prcc_f * csho,
+         size = if_else(mkt_cap > 0, log(mkt_cap), NA),
+         roa = if_else(at > 0, ib / at, NA),
+         mtb = if_else(ceq > 0, mkt_cap / ceq, NA),
+         special_items = if_else(at > 0, coalesce(spi, 0) / at, NA)) |>
+  select(gvkey, iid, datadate, mkt_cap, size, roa, mtb, special_items) |>
+  filter(mkt_cap > 0) |>
+  mutate(eomonth = floor_date(datadate, "month") + months(1) - days(1)) |>
+  arrange(gvkey, datadate) |>
+  collect()
+dbDisconnect(raw_db)
+```
+
+```{r}
+#| include: false
 db <- dbConnect(duckdb::duckdb())
 
-vdis_df <- load_parquet(db, table = "vdis_df", schema = "glms") 
 filing_10k_merged <- load_parquet(db, table = "filing_10k_merged", 
                                   schema = "glms") 
 liquidity <- load_parquet(db, table = "liquidity", schema = "glms") 
 trading_dates <- load_parquet(db, table = "trading_dates", schema = "glms") 
 event_dates <- load_parquet(db, table = "event_dates", schema = "glms") 
-compustat <- load_parquet(db, table = "compustat", schema = "glms") 
+sec_index <- load_parquet(db, "sec_index*", schema = "edgar")
+filing_8k <- sec_index |> filter(form_type == "8-K") |> rename(date_8k = date_filed)
+```
 
+```{r}
+#| label: glms-reg-data
+#| include: false
+#| cache: true
+#| cache.vars: [reg_data_glms]
+#| cache.extra: !expr digest::digest(list(file.info(file.path(project_dir, "filing_10k_merged.parquet"))[, c("size", "mtime")], file.info(list.files(file.path(data_dir, "edgar"), pattern = "parquet$", full.names = TRUE))[, c("size", "mtime")], digest::digest(compustat_local), body(sum_true)))
+vdis_df <-
+  filing_10k_merged |>
+  rename(fdate = filing_date) |>
+  mutate(fdate_p1 = fdate + years(1L), fdate_m1 = fdate - years(1L)) |>
+  left_join(filing_8k, join_by(cik, between(y$date_8k, x$fdate_m1, x$fdate_p1))) |>
+  mutate(datediff = as.double(date_8k - fdate)) |>
+  mutate(vdis_p1y = datediff > 0,
+         vdis_p30 = between(datediff, 0, 30),
+         vdis_p60 = between(datediff, 0, 60),
+         vdis_p90 = between(datediff, 0, 90),
+         vdis_m1y = datediff < 0,
+         vdis_m30 = between(datediff, -30, -1),
+         vdis_m60 = between(datediff, -60, -1),
+         vdis_m90 = between(datediff, -90, -1)) |>
+  group_by(acc_num, gvkey, iid, cik) |>
+  summarize(across(starts_with("vdis_"), !!sum_true),
+            .groups = "drop") |>
+  mutate(across(starts_with("vdis_"), \(x) coalesce(x, 0L))) |>
+  group_by(acc_num, gvkey, iid) |>
+  window_order(desc(vdis_p1y), cik) |>
+  filter(row_number() == 1L) |>
+  ungroup()
+compustat <- copy_to(db, compustat_local, name = "compustat", overwrite = TRUE)
+
+reg_data_glms <-
+  vdis_df |>
+  inner_join(filing_10k_merged,
+             by = join_by(acc_num, gvkey, iid, cik)) |>
+  inner_join(compustat, by = join_by(gvkey, iid, eomonth)) |>
+  mutate(ln_grossfilesize = log(grossfilesize)) |>
+  arrange(gvkey, iid, acc_num, cik) |>
+  collect()
+```
+
+```{r}
+#| label: glms-plot-data
+#| include: false
+#| cache: true
+#| cache.vars: [plot_data]
+#| cache.extra: !expr digest::digest(file.info(file.path(project_dir, paste0(c("filing_10k_merged", "liquidity", "trading_dates", "event_dates"), ".parquet")))[, c("size", "mtime")])
 liquidity_merged <-
   event_dates |>
   inner_join(liquidity, 
@@ -422,8 +515,9 @@ liquidity_merged <-
 complexity <-
   filing_10k_merged |> 
   mutate(year = year(filing_date)) |> 
-  group_by(year) |> 
-  mutate(complex_q5 = ntile(grossfilesize, 5))
+  group_by(year) |>
+  window_order(grossfilesize, gvkey, iid, filing_date, acc_num, cik) |>
+  mutate(complex_q5 = ntile(NULL, n = 5))
 
 complete_cases <-
   liquidity_merged |> 
@@ -440,9 +534,11 @@ plot_data <-
              by = join_by(gvkey, iid, filing_date)) |>
   semi_join(complete_cases,
             by = join_by(gvkey, iid, filing_date)) |>
-  group_by(year) |> 
-  mutate(spread = ntile(spread, 10),
-         illiq = ntile(illiq, 10)) |>
+  group_by(year) |>
+  window_order(spread, gvkey, iid, filing_date, rel_td, permno, acc_num, cik) |>
+  mutate(spread = ntile(NULL, n = 10)) |>
+  window_order(illiq, gvkey, iid, filing_date, rel_td, permno, acc_num, cik) |>
+  mutate(illiq = ntile(NULL, n = 10)) |>
   group_by(rel_td, complex_q5) |>
   summarize(spread = mean(spread, na.rm = TRUE),
             illiq = mean(illiq, na.rm = TRUE),
@@ -451,6 +547,13 @@ plot_data <-
   pivot_longer(spread:illiq, names_to = "measure") |>
   mutate(complex_q5 = as.character(complex_q5)) |>
   compute()
+
+plot_data <- collect(plot_data)
+```
+
+```{r}
+#| include: false
+dbDisconnect(db)
 ```
 
 ```{r}
@@ -471,16 +574,7 @@ plot_data |>
   theme(legend.position = "none")
 ```
 
-```{r}
-#| include: false
-reg_data_glms <-
-  vdis_df |>
-  inner_join(filing_10k_merged, 
-             by = join_by(acc_num, gvkey, iid, cik)) |>
-  inner_join(compustat, by = join_by(gvkey, iid, eomonth)) |>
-  mutate(ln_grossfilesize = log(grossfilesize)) |>
-  collect()
-```
+
 
 ```{r}
 #| message: false
@@ -522,16 +616,16 @@ modelsummary(map(fms, get_coefs),
 
 ### Exercises
 
-1. We could replace `tbl(db, sql(lm_10x_summary_sql))` above with `read_csv(lm_data, show_col_types = FALSE)`.
+1. Instead of `tbl(db, sql(lm_10x_summary_sql))`, we could have used `read_csv(lm_data, show_col_types = FALSE)`.
 What benefits do you see from using the former option? (*Hint*: Try both versions of the code and perhaps use `system.time()` to evaluate processing times.)
 
-2. What primary key for `lm_10x_summary` is implied by the manner in which we constructed `filing_10k_merged` above?
+2. What primary key could we use for `lm_10x_summary`?
 Check that this is a valid primary key.
 
-3. What primary key for `filing_10k_merged` is implied by the manner in which we constructed `vdis_df` above?
+3. What primary key could we use for `filing_10k_merged`?
 Check that this is a valid primary key.
 
-4. From @fig-complex-ts, do you observe a change in measures of liquidity around 10-K filings dates?
+4. From @fig-complex-ts, do you observe a change in measures of liquidity around 10-K filing dates?
 Why (or why not) would we expect to see a change around these events?
 
 5. From @fig-complex-ts, do you observe a relation between the complexity of financial statements and illiquidity?
@@ -540,11 +634,8 @@ Does the nature of the relationship affect how you interpret the results of @Gua
 
 6. Calculate the marginal effects associated with the regression coefficients shown in @tbl-gst-tab-3.
 Do you observe significant differences across specifications?
-(*Hint*: The `mfx()` function should be able to do most of the work here.)
+(*Hint*: The `get_mfx()` function should be able to do most of the work here.)
 
-```{r}
-#| include: false
-dbDisconnect(db)
-```
+
 
 ### References {-}

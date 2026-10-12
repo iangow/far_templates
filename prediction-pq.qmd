@@ -19,8 +19,8 @@ library(glmnet)
 
 ```{r}
 #| label: features
+#| cache: false
 #| include: false
-#| cache: true
 db <- dbConnect(duckdb::duckdb())
 
 funda <- load_parquet(db, schema = "comp", table = "funda")
@@ -43,9 +43,15 @@ features_all <-
 
 features <-
   features_all |>
-  collect() |> 
+  arrange(gvkey, datadate) |>
+  collect() |>
   na.omit()
 
+dbDisconnect(db)
+```
+
+```{r}
+#| include: false
 aaer_long <-
   aaer_firm_year |>
   rowwise() |>
@@ -54,26 +60,31 @@ aaer_long <-
   select(gvkey, p_aaer, fyear, min_year, max_year) 
 
 get_aaers <- function(test_date, include_latent = FALSE) {
-  min_aaer_date <- min(aaer_dates$aaer_date, na.rm = TRUE)
-  
   df <-
     aaer_dates |>
     mutate(p_aaer = str_replace(aaer_num, "^AAER-", "")) |>
     select(p_aaer, aaer_date) |>
     distinct() |>
     right_join(aaer_long, by = "p_aaer") |>
-    mutate(aaer_date = coalesce(aaer_date, min_aaer_date)) |>
-    mutate(misstate = aaer_date <= test_date) |>
-    select(gvkey, fyear, misstate) |>
-    distinct()
-    
+    group_by(gvkey, fyear) |>
+    summarize(misstate = any(aaer_date <= as.Date(test_date), na.rm = TRUE),
+              .groups = "drop")
+
   if (include_latent) {
     df |> mutate(misstate_latent = TRUE)
   } else {
     df
   }
 }
+```
 
+```{r}
+#| label: prediction-models
+#| cache: true
+#| cache.vars: [data_train, n_folds, folds, sample_splits, formula, fm1, within_sample1]
+#| cache.extra: !expr digest::digest(digest::digest(list(features, aaer_firm_year, aaer_dates, body(get_aaers))))
+#| include: false
+#| warning: false
 aaers <- get_aaers(test_date = "2002-09-30", include_latent = TRUE)
 
 df <-
@@ -89,10 +100,13 @@ data_train <-
 n_folds <- 5
 folds <- 1:n_folds
 
+set.seed(2024)
+
 sample_splits <- 
   data_train |>
   select(gvkey) |>
   distinct() |>
+  arrange(gvkey) |>
   mutate(fold = sample(folds, nrow(pick(everything())), replace = TRUE))
 
 formula <- str_c(y_var, " ~ ", str_c(X_vars, collapse = " + "))
@@ -103,7 +117,10 @@ within_sample1 <-
   mutate(score = predict(fm1, 
                          newdata = pick(everything()), type = "response"),
          predicted = as.integer(score > 0.5))
+```
 
+```{r}
+#| include: false
 logit_predict <- function(fold) {
   dft <-
     data_train |>
@@ -125,8 +142,11 @@ logit_predict <- function(fold) {
 ```{r}
 #| include: false
 #| warning: false
-#| cache: false
-#| dependson: logit_predict, sample_splits
+#| cache: true
+#| label: logit-cv
+#| dependson: prediction-models
+#| cache.vars: [logit_fit]
+#| cache.extra: !expr digest::digest(body(logit_predict))
 logit_fit <- 
   folds |> 
   map(logit_predict) |>
@@ -135,12 +155,27 @@ logit_fit <-
   select(gvkey, fyear, predicted, score, misstate)
 ```
 
+```{r}
+#| label: tbl-logit-baseline
+#| tbl-cap: "Supplied logistic regression performance"
+#| echo: false
+list(`In sample` = within_sample1, `Firm-fold CV` = logit_fit) |>
+  imap_dfr(\(d, label) tibble(
+    sample = label, n = nrow(d),
+    auc = unname(auc(d$score, d$misstate)),
+    true_positive = sum(d$predicted == 1 & d$misstate),
+    false_positive = sum(d$predicted == 1 & !d$misstate),
+    false_negative = sum(d$predicted == 0 & d$misstate))) |>
+  knitr::kable(digits = 4)
+```
+
+
 ### Classification trees
 
 ```{r}
 #| include: false
 fm2 <- rpart(formula, data = data_train, 
-             control = rpart.control(cp = 0.001, minbucket = 5), 
+             control = rpart.control(cp = 0.001, minbucket = 5, xval = 0),
              method = "class")
 ```
 
@@ -148,7 +183,7 @@ fm2 <- rpart(formula, data = data_train,
 #| include: false
 within_sample2 <-
   data_train |>
-  mutate(score = predict(fm2, newdata = pick(everything()))[, 2],
+  mutate(score = predict(fm2, newdata = pick(everything()))[, "TRUE"],
          predicted = score > 0.5)
 ```
 
@@ -157,7 +192,7 @@ within_sample2 <-
 #| label: fig-tree
 #| fig-height: 3
 #| fig-cap: Fitted tree produced by recursive partitioning.
-#| fig-alt: "Fitted tree shows splits by features. Specific splits are not of particular importance and are not discussed in the text. First split is based on `prcc_f`, or end-of-period stock price. Splits up to five levels deep are used." 
+#| fig-alt: "Diagram of the fitted classification tree, showing split conditions and the class assigned at each terminal node."
 rpart.plot(fm2, extra = 1)
 ```
 
@@ -190,6 +225,9 @@ auc(within_sample2$score, within_sample2$misstate)
 #| include: false
 #| label: fm-lasso
 #| cache: true
+#| cache.vars: [dft, fm_lasso_cv, idmin, fit_lasso_cv, fm_lasso]
+#| dependson: prediction-models
+#| cache.extra: !expr digest::digest(list(body(logit_predict), if (exists("rpart_predict")) body(rpart_predict), packageVersion("rpart"), packageVersion("glmnet")))
 dft <-
   data_train |>
   inner_join(sample_splits, by = "gvkey")
@@ -219,6 +257,18 @@ fm_lasso <- glmnet(x = as.matrix(data_train[X_vars]),
                    alpha = 1)
 ```
 
+```{r}
+#| label: tbl-lasso-baseline
+#| tbl-cap: "Supplied lasso cross-validation performance"
+#| echo: false
+lasso_id <- match(fm_lasso_cv$lambda.min, fm_lasso_cv$lambda)
+tibble(metric = c("Mean fold AUC", "Pooled out-of-fold AUC"),
+       value = c(fm_lasso_cv$cvm[lasso_id],
+                 unname(auc(fit_lasso_cv$prob, fit_lasso_cv$misstate)))) |>
+  knitr::kable(digits = 4)
+```
+
+
 ### Discussion questions and exercises
 
 1. What features are selected by the lasso model in this case?
@@ -232,7 +282,7 @@ fm_lasso <- glmnet(x = as.matrix(data_train[X_vars]),
 
 4. Calculate AUC and produce the confusion matrix for `fm_lasso` applied to `data_train` (i.e., in sample).
 Interpret these results.
-(*Hint*: You might use this code: `predict(fm_lasso, newx = as.matrix(data_train[X_vars]))` and the `auc` function supplied with the `farr` package.)
+(*Hint*: You might use this code: `predict(fm_lasso, newx = as.matrix(data_train[X_vars]))` and the `auc()` function supplied with the `farr` package.)
 
 ```{r}
 #| label: fit_rus_model
@@ -241,8 +291,10 @@ Interpret these results.
 fit_rus_model <- function(df, size = 30, rus = TRUE, learn_rate = 1,
                           maxdepth = NULL, minbucket = NULL,
                           ir = 1) {
-  if (!is.null(maxdepth)) control <- rpart.control(maxdepth = maxdepth) 
-  if (!is.null(minbucket)) control <- rpart.control(minbucket = minbucket)
+  control_args <- list()
+  if (!is.null(maxdepth)) control_args$maxdepth <- maxdepth
+  if (!is.null(minbucket)) control_args$minbucket <- minbucket
+  control <- do.call(rpart.control, control_args)
   
   fm <- rusboost(formula, df, size = size, ir = ir, learn_rate = learn_rate,
                  rus = rus, control = control)
@@ -297,14 +349,184 @@ get_auc <- function(...) {
 }
 ```
 
+```{r}
+#| include: false
+test_years <- 2003:2008
+
+test_dates <-
+  tibble(test_year = test_years) |>
+  mutate(test_date = as.Date(paste0(test_year + 1, "-09-30")))
+```
+
+```{r}
+#| include: false
+train_model <- function(features, test_year, gap = 2,
+                        size, rus = TRUE, learn_rate, ir, control) {
+
+  test_date <-
+    test_dates |>
+    filter(test_year == !!test_year) |>
+    select(test_date) |>
+    pull()
+
+  aaers <- get_aaers(test_date = test_date)
+
+  data_train <-
+    aaers |>
+    right_join(features, by = c("gvkey", "fyear")) |>
+    filter(fyear <= test_year - gap) |>
+    mutate(misstate = as.integer(coalesce(misstate, FALSE)))
+
+  fm <- rusboost(formula, data_train, size = size, learn_rate = learn_rate,
+                 rus = rus, ir = ir, control = control)
+  return(fm)
+}
+```
+
+```{r}
+#| include: false
+test_model <- function(features, fm, test_year) {
+
+  target <- as.character(stats::as.formula(fm[["formula"]])[[2]])
+
+  df <-
+    features |>
+    left_join(aaer_long |> distinct(gvkey, fyear) |>
+                mutate(misstate = 1L), by = c("gvkey", "fyear")) |>
+    mutate(misstate = coalesce(misstate, 0L))
+
+  data_test <-
+    df |>
+    filter(fyear == test_year)
+
+  return(list(score = predict(fm, data_test, type = "prob"),
+              predicted = as.integer(predict(fm, data_test,
+                                             type = "class") == 1),
+              response = as.integer(data_test[[target]] == 1)))
+}
+```
+
+```{r}
+#| include: false
+fit_test <- function(x, features, gap = 2,
+                     size, rus = TRUE, learn_rate, ir = 1, control) {
+  set.seed(2021)
+  fm <- train_model(features = features, test_year = x,
+                    size = size, rus = rus, ir = ir,
+                    learn_rate = learn_rate, control = control, gap = gap)
+  test_model(features = features, fm = fm, test_year = x)
+}
+```
+
+```{r}
+#| include: false
+get_stats <- function(results) {
+  response <- results$response
+  score <- results$score
+
+  ndcg_k <- function(k) {
+    c(ndcg(score, response, k = k))
+  }
+
+  res <- list(auc(score, response),
+              unlist(map(seq(0.01, 0.03, 0.01), ndcg_k)))
+  unlist(res)
+}
+```
+
+```{r}
+#| include: false
+add_means <- function(df) {
+  bind_rows(df, summarise(df, across(everything(), mean)))
+}
+```
+
+```{r}
+#| include: false
+table_results <- function(results, ...) {
+  results |>
+    map(get_stats) |>
+    bind_rows() |>
+    add_means() |>
+    mutate(test_year = c(test_years, "Mean")) |>
+    select(test_year, everything())
+}
+```
+
+```{r}
+#| include: false
+optim_ada <- tibble(size = 50, learn_rate = 0.1, maxdepth = 7)
+optim_rus <- tibble(size = 300, learn_rate = 0.01, maxdepth = 15, ir = 2)
+plan(multisession, workers = min(2L, future::availableCores()))
+```
+
+```{r}
+#| label: supplied-boost-cv
+#| include: false
+#| cache: true
+#| cache.vars: [boost_cv]
+#| dependson: prediction-models
+#| cache.extra: !expr digest::digest(list(optim_ada, optim_rus, body(get_auc), body(rus_predict), body(fit_rus_model)))
+boost_cv <- tibble(
+  algorithm = c("AdaBoost", "RUSBoost"),
+  auc = c(get_auc(size = optim_ada$size, rus = FALSE,
+                  learn_rate = optim_ada$learn_rate, maxdepth = optim_ada$maxdepth),
+          get_auc(size = optim_rus$size, rus = TRUE, ir = optim_rus$ir,
+                  learn_rate = optim_rus$learn_rate, maxdepth = optim_rus$maxdepth)))
+```
+
+```{r}
+#| label: supplied-boost-tests
+#| include: false
+#| cache: true
+#| cache.vars: [results_ada, results_rus]
+#| dependson: prediction-models
+#| cache.extra: !expr digest::digest(list(features, aaer_long, test_dates, optim_ada, optim_rus, body(train_model), body(test_model), body(fit_test)))
+plan(multisession, workers = min(2L, future::availableCores()))
+results_ada <- future_map(test_years, fit_test, features = features,
+                          size = optim_ada$size, rus = FALSE,
+                          learn_rate = optim_ada$learn_rate,
+                          control = rpart.control(maxdepth = optim_ada$maxdepth),
+                          .options = furrr_options(seed = 2021))
+results_rus <- future_map(test_years, fit_test, features = features,
+                          size = optim_rus$size, rus = TRUE, ir = optim_rus$ir,
+                          learn_rate = optim_rus$learn_rate,
+                          control = rpart.control(maxdepth = optim_rus$maxdepth),
+                          .options = furrr_options(seed = 2021))
+```
+
+The supplied boosting settings are those embedded in the book's existing tuning output.
+The cross-validation scores and chronological test scores below are recomputed on the current data using those settings; the full tuning grids are not rerun in these companions.
+
+```{r}
+#| label: tbl-boost-cv-supplied
+#| tbl-cap: "Supplied boosting models: Current cross-validation AUC"
+#| echo: false
+boost_cv |> knitr::kable(digits = 4)
+```
+
+```{r}
+#| label: tbl-ada-supplied
+#| tbl-cap: "Supplied AdaBoost test-year performance"
+#| echo: false
+table_results(results_ada) |> knitr::kable(digits = 4)
+```
+
+```{r}
+#| label: tbl-rus-supplied
+#| tbl-cap: "Supplied RUSBoost test-year performance"
+#| echo: false
+table_results(results_rus) |> knitr::kable(digits = 4)
+```
+
 ## Discussion questions and exercises
 
-1. In asserting that RUSBoost is superior to AdaBoost we did not evaluate the statistical significance of the difference between the AUCs for the two approaches.
+1. In asserting that RUSBoost is superior to AdaBoost, we did not evaluate the statistical significance of the difference between the AUCs for the two approaches.
 Describe how you might evaluate the statistical significance of this difference.
 
 2. Compare the performance statistics from cross-validation and out-of-sample testing.
 What do these numbers tell you?
-Do you believe that these provide evidence that using (say) 2001 data to train a model that is evaluated on (say) 1993 frauds is problematic?
+Do these provide evidence on whether using (say) 2001 data to train a model that is evaluated on (say) 1993 frauds is problematic?
 
 3. @Bao:2022aa report an AUC in the test sample for RUSBoost of 0.7228 (see Panel B of Table 1).
 What differences are there between our approach here and those in @Bao:2020aa and @Bao:2022aa that might account for the differences in AUC?
@@ -316,9 +538,9 @@ You may find it helpful to adapt the code above for RUSBoost in the following st
    b. Create a function `test_logit()` analogous to `test_model()` above, but using calls to `predict()` like those used above for logistic regression.
    c. Create a function `fit_test_logit()` analogous to `fit_test()` above, but calling the functions you created above.
    d. Use `map()` or `future_map()` with `test_years` and `fit_test_logit()` and store the results in `results_logit`.
-   e. Tabulate results using `table_results(results_logit)`.
+   e. Tabulate results using `table_results(results_logit)`. ([the book's logit results](https://iangow.github.io/far_book/prediction.html#tbl-logit-oss) contains our results from following these steps.)
    
-5. Do the AUC results obtained from logit surprise you given the cross-validation and in-sample AUCs calculated (in exercises) above?
+5. Do the AUC results obtained from logit (either from your answer to the previous question or [the book's logit results](https://iangow.github.io/far_book/prediction.html#tbl-logit-oss)) surprise you given the cross-validation and in-sample AUCs calculated (in exercises) above?
 How does the average AUC compare with the 0.6842 of @Bao:2022aa?
 What might account for the difference?
 
