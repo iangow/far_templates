@@ -521,7 +521,7 @@ table_results(results_rus) |> knitr::kable(digits = 4)
 
 ## Discussion questions and exercises
 
-1. In asserting that RUSBoost is superior to AdaBoost, we did not evaluate the statistical significance of the difference between the AUCs for the two approaches.
+1. We did not evaluate the statistical significance of the difference between the AUCs for AdaBoost and RUSBoost.
 Describe how you might evaluate the statistical significance of this difference.
 
 2. Compare the performance statistics from cross-validation and out-of-sample testing.
