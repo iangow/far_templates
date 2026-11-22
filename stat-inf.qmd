@@ -239,11 +239,6 @@ Why might researchers prefer to have a choice regarding the test to be used?
 
 ## Dependence
 
-The manual second-step FM regressions use $t_9$ from 10 yearly coefficient estimates.^[The `pmg()` FM-t row below retains the standard-normal probabilities used by `summary.pmg()`, so its p-values need not match the manual second-step regressions.]
-`NeweyWest(lag=1, prewhite=FALSE, adjust=TRUE)` retains that reference and applies the Bartlett lag-1 weight of $1/2$ and covariance adjustment $T/(T-1)$.
-The clustered fits retain `K.adj=TRUE, G.adj=TRUE, G.df="min", t.df="min"`: CL-i uses $t_{499}$, and CL-t and CL-2 use $t_9$.
-OLS, White and pooled panel NW use $t_{4998}$; the panel NW covariance is HC0 with lag 1.
-These conventions differ from those stated in the Python edition.
 
 ```{r}
 #| include: false
@@ -281,7 +276,7 @@ tidy.pmg <- function(x, ...) {
       estimate  = res$coefficients,
       std.error  = se(res),
       statistic = res$coefficients / se(res),
-      p.value = 2 * pnorm(abs(statistic), lower.tail = FALSE))
+      p.value   = pvalue(res))
 }
 
 glance.pmg  <- function(x, ...) {
@@ -295,24 +290,18 @@ glance.pmg  <- function(x, ...) {
 
 ```{r}
 #| include: false
-model <- as.formula(y ~ x)
-cluster_ssc <- ssc(K.adj = TRUE, G.adj = TRUE,
-                   G.df = "min", t.df = "min")
-fms <- list(OLS = lm(model, data = test),
-            White = lm(model, data = test),
-            NW = plm(model, test, index = c("firm", "year"),
+fms <- list(OLS = lm(y ~ x, data = test),
+            White = lm(y ~ x, data = test),
+            NW = plm(y ~ x, test, index = c("firm", "year"),
                      model = "pooling"),
-            `FM-t` = pmg(model, test, index = "year"),
-            `CL-i` = feols(model, vcov = ~ firm, data = test,
-                           ssc = cluster_ssc),
-            `CL-t` = feols(model, vcov = ~ year, data = test,
-                           ssc = cluster_ssc),
-            `CL-2` = feols(model, vcov = ~ year + firm, data = test,
-                           ssc = cluster_ssc))
+            `FM-t` = pmg(y ~ x, test, index = "year"),
+            `CL-i` = feols(y ~ x, vcov = ~ firm, data = test),
+            `CL-t` = feols(y ~ x, vcov = ~ year, data = test),
+            `CL-2` = feols(y ~ x, vcov = ~ year + firm, data = test))
 
 vcovs <- map(fms, vcov)
 vcovs[["White"]] <- vcovHC(fms[["White"]], type="HC1")
-vcovs[["NW"]] <- vcovNW(fms[["NW"]], type = "HC0", maxlag = 1)
+vcovs[["NW"]] <- vcovNW(fms[["NW"]])
 ```
 
 ```{r}
